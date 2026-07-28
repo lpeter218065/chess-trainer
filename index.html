@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="小棋星——为青少年棋手打造的智能棋谱分析与训练平台">
+  <title>小棋星 · 智能棋谱教练</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&family=Nunito:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard"><span class="brand-icon">♞</span><span><strong>小棋星</strong><small>智能棋谱教练</small></span></a>
+      <nav aria-label="主导航">
+        <a class="nav active" href="#dashboard"><span>⌂</span>学习首页</a>
+        <a class="nav" href="#analysis"><span>♙</span>棋谱分析</a>
+        <a class="nav" href="#training"><span>◎</span>训练计划 <b>3</b></a>
+        <a class="nav" href="#games"><span>▤</span>我的棋谱</a>
+        <a class="nav" href="#growth"><span>↗</span>成长报告</a>
+      </nav>
+      <div class="streak"><span>♟</span><strong>连续学习 7 天！</strong><p>再坚持 3 天，解锁「战术小达人」徽章</p><i><b></b></i></div>
+      <div class="help">◯　帮助与反馈</div>
+    </aside>
+
+    <main>
+      <header>
+        <div class="mobile-logo"><span class="brand-icon">♞</span><strong>小棋星</strong></div>
+        <button class="profile" id="profile-button">
+          <span class="avatar" data-avatar>晨</span><span><strong data-name>林小晨</strong><small data-rank>中国棋协 · 三级棋士</small></span><em>⌄</em>
+        </button>
+      </header>
+
+      <div class="content" id="dashboard">
+        <section class="welcome">
+          <div><small>7月28日 · 星期二</small><h1>早上好，<span data-greeting>小晨</span>！👋</h1><p>每一步思考，都让你离大师更近一点。</p></div>
+          <div class="goal"><span><b>2</b>/3</span><div><small>今日目标</small><strong>再完成 1 项训练</strong></div></div>
+        </section>
+
+        <section class="hero" id="analysis">
+          <div class="hero-copy"><span class="tag">AI 棋谱分析</span><h2>看看这盘棋，哪里还能下得更好？</h2><p>从中国国际象棋协会平台导出棋谱，上传后由 Stockfish 引擎逐步分析，为你找到精彩着法和提升机会。</p>
+            <div class="hero-actions"><label class="primary" for="file-input">＋　导入棋谱分析</label><input id="file-input" type="file" accept=".pgn,.txt" hidden><button id="paste-button">粘贴 PGN　→</button></div>
+            <small>支持 .PGN 文件 · 单个文件不超过 10MB</small>
+          </div>
+          <div class="board-area"><div class="board" id="board"></div><span class="engine"><i></i> Stockfish 引擎已就绪</span></div>
+        </section>
+
+        <div class="section-title" id="training"><div><h2>今日训练</h2><p>根据最近棋谱中的薄弱点，为你智能制定</p></div><a href="#">查看全部计划 →</a></div>
+        <section class="training-grid">
+          <article class="training-card recommended"><span class="piece purple">♞</span><b class="badge">推荐</b><h3>骑士的奇妙旅程</h3><p>学习马的路线规划，避免把马困在棋盘边缘。</p><div class="meta"><span>◷ 约 12 分钟</span><span>8 道题</span></div><i class="progress"><b style="width:38%"></b></i><button data-training="骑士的奇妙旅程">继续训练　→</button></article>
+          <article class="training-card"><span class="piece coral">♜</span><b class="badge">基础战术</b><h3>一步将杀挑战</h3><p>发现决定胜负的关键一步，训练你的棋盘洞察力。</p><div class="meta"><span>◷ 约 8 分钟</span><span>10 道题</span></div><i class="progress"><b></b></i><button class="outline" data-training="一步将杀挑战">开始训练　→</button></article>
+          <article class="training-card"><span class="piece gold">♟</span><b class="badge">残局基础</b><h3>兵的冲刺赛</h3><p>掌握关键格和对王技巧，让小兵顺利升变。</p><div class="meta"><span>◷ 约 10 分钟</span><span>6 道题</span></div><i class="progress"><b></b></i><button class="outline" data-training="兵的冲刺赛">开始训练　→</button></article>
+        </section>
+
+        <section class="bottom-grid">
+          <article class="panel" id="games"><div class="panel-title"><div><h2>最近棋谱</h2><p>继续复盘，发现每一盘棋的收获</p></div><a href="#">全部棋谱</a></div><div id="game-list"></div></article>
+          <article class="panel" id="growth"><div class="panel-title"><div><h2>本周成长</h2><p>你的努力正在发光</p></div><span class="up">↗ 12%</span></div><div class="stats"><div><b>24</b><small>完成题目</small></div><div><b>82%</b><small>平均正确率</small></div><div><b>96<em>分</em></b><small>训练时长</small></div></div><div class="chart"><i style="height:30%"></i><i style="height:55%"></i><i style="height:42%"></i><i style="height:78%"></i><i style="height:64%"></i><i class="today" style="height:92%"></i><i style="height:22%"></i></div><div class="days"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div></article>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="pgn-dialog"><form method="dialog"><button class="close" value="cancel">×</button><span class="dialog-icon">♞</span><h2>粘贴棋谱 PGN</h2><p>复制从国象联盟平台导出的完整棋谱内容</p><textarea id="pgn-text" placeholder="[Event &quot;少年组比赛&quot;]&#10;[White &quot;林小晨&quot;]&#10;[Black &quot;对手&quot;]&#10;&#10;1. e4 e5 2. Nf3 ..."></textarea><button type="button" class="primary full" id="analyze-pgn">开始智能分析</button></form></dialog>
+  <dialog id="profile-dialog"><form method="dialog"><button class="close" value="cancel">×</button><div class="dialog-head"><span class="dialog-icon">♙</span><div><h2>棋手档案</h2><p>每位棋手的棋谱、分析和训练计划相互隔离</p></div></div><div id="profile-list" class="profile-list"></div><button type="button" class="add-profile" id="add-profile">＋ 新建棋手档案</button><div class="new-profile" id="new-profile" hidden><label>棋手姓名<input id="new-name" maxlength="12" placeholder="请输入姓名"></label><label>棋手等级<input id="new-rank" maxlength="20" placeholder="例如：中国棋协 · 五级棋士"></label><button type="button" class="primary full" id="save-profile">保存档案</button></div><p class="privacy">🔒 当前档案的数据保存在独立空间，切换棋手不会混合棋谱。</p></form></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+node_modules
+dist
+public/engine
+src/engine/enginePath.generated.ts
+*.tsbuildinfo

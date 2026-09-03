@@ -19,6 +19,8 @@ npm run dev
 - API Key（仅保存在本机 `localStorage`，不会上传到本仓库）
 - 模型名
 
+也可以复制 `.env.example` 为 `.env.local`（已 gitignore），用 `VITE_LLM_BASE_URL` / `VITE_LLM_API_KEY` / `VITE_LLM_MODEL` / `VITE_LLM_REASONING_EFFORT` 做开发默认值。设置页未填 Key 时会回落到这些环境变量。
+
 「测试连接」会发一条流式请求，收到第一个 token 即视为成功。第三方兼容服务若不允许浏览器 CORS，请求会失败。
 
 ## 新增课程

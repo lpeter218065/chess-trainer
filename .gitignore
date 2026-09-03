@@ -3,3 +3,6 @@ dist
 public/engine
 src/engine/enginePath.generated.ts
 *.tsbuildinfo
+.env
+.env.local
+.env.*.local

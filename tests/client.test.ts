@@ -31,7 +31,20 @@ describe('streamChat', () => {
     const body = JSON.parse(captured!.init.body as string);
     expect(body.stream).toBe(true);
     expect(body.model).toBe('gpt-x');
+    expect(body.reasoning_effort).toBeUndefined();
     expect((captured!.init.headers as Record<string, string>).Authorization).toBe('Bearer sk-test');
+  });
+
+  it('设置了 reasoningEffort 时写入请求体', async () => {
+    let body: Record<string, unknown> | null = null;
+    const fetchImpl: typeof fetch = async (_url, init) => {
+      body = JSON.parse(init!.body as string);
+      return sseResponse(['data: {"choices":[{"delta":{"content":"好"}}]}\n\ndata: [DONE]\n\n']);
+    };
+    const out: string[] = [];
+    for await (const d of streamChat({ ...cfg, reasoningEffort: 'medium' }, [{ role: 'user', content: 'hi' }], { fetchImpl })) out.push(d);
+    expect(out).toEqual(['好']);
+    expect(body!.reasoning_effort).toBe('medium');
   });
 
   it('非 2xx 抛 LlmError 带状态码', async () => {

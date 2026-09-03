@@ -1,9 +1,13 @@
 import { createSseParser, extractDelta } from './sseParser';
 
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
+
 export interface LlmConfig {
   baseUrl: string; // 如 https://api.openai.com/v1
   apiKey: string;
   model: string;
+  /** 推理模型用；未设则不传，兼容普通 chat 接口 */
+  reasoningEffort?: ReasoningEffort;
 }
 
 export interface ChatMessage {
@@ -34,7 +38,13 @@ export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts:
     res = await fetchImpl(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({ model: cfg.model, messages, stream: true, temperature: opts.temperature ?? 0.7 }),
+      body: JSON.stringify({
+        model: cfg.model,
+        messages,
+        stream: true,
+        temperature: opts.temperature ?? 0.7,
+        ...(cfg.reasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
+      }),
       signal: opts.signal,
     });
   } catch (e) {

@@ -34,12 +34,16 @@ export function LessonPage() {
 
   if (!lesson) return <div className="p-6">找不到课程。<button className="underline" onClick={() => navigate('/')}>返回</button></div>;
   if (!store) return <div className="p-6 text-sm text-neutral-500">{engineStatus}</div>;
-  return <LessonView store={store} difficultyId={difficultyId} onDifficulty={setDifficultyId} onBack={() => navigate('/')} />;
+  return <LessonView store={store} expectedLessonId={lesson.id} difficultyId={difficultyId} onDifficulty={setDifficultyId} onBack={() => navigate('/')} />;
 }
 
-function LessonView({ store, difficultyId, onDifficulty, onBack }: { store: StoreApi<SessionState>; difficultyId: DifficultyId; onDifficulty(id: DifficultyId): void; onBack(): void }) {
+function LessonView({ store, expectedLessonId, difficultyId, onDifficulty, onBack }: { store: StoreApi<SessionState>; expectedLessonId: string; difficultyId: DifficultyId; onDifficulty(id: DifficultyId): void; onBack(): void }) {
   const s = useSession(store, (x) => x);
-  const lesson = s.lesson!;
+  // start() 在父组件 useEffect 里调用，首次渲染时 session.lesson 仍是 null
+  if (!s.lesson || s.lesson.id !== expectedLessonId) {
+    return <div className="p-6 text-sm text-neutral-500">正在准备课程…</div>;
+  }
+  const lesson = s.lesson;
   const lastUci = s.rounds.length ? (s.rounds[s.rounds.length - 1].engineMove?.uci ?? s.rounds[s.rounds.length - 1].userMove.uci) : null;
   const lastMove = lastUci ? (({ from, to }) => ({ from, to }))(uciToSquares(lastUci)) : null;
   const startMoveNumber = Number(lesson.startFen.split(' ')[5] ?? '1');

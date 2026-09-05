@@ -62,7 +62,7 @@ export async function bootLessonSession(lesson: Lesson, difficulty: Difficulty):
     runInBackground(
       store.getState().start(lesson, difficulty).then(() => {
         const exported = store.getState().exportSnapshot();
-        if (exported && useGameSessions.getState().activeLessonId === id) gs.saveLessonSnapshot(id, exported, `${lesson.title}`);
+        if (exported && useGameSessions.getState().activeLessonId === id) gs.saveLessonSnapshot(id, exported);
       }),
     );
   }

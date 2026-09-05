@@ -82,15 +82,6 @@ export function OpeningDrillPage() {
       const gs = useGameSessions.getState();
       gs.newLesson(lesson.id, sessionLabel(ready.title, color, startMode, difficulty.label));
       const s = await bootLessonSession(lesson, difficulty);
-      await s.getState().start(lesson, difficulty);
-      const snap = s.getState().exportSnapshot();
-      if (snap && gs.activeLessonId) {
-        gs.saveLessonSnapshot(
-          gs.activeLessonId,
-          snap,
-          sessionLabel(ready.title, color, startMode, difficulty.label),
-        );
-      }
       setStore(s);
     } catch (e) {
       setStartError(String(e).replace(/^Error:\s*/, ''));

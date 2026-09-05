@@ -105,4 +105,20 @@ describe('secureStore native', () => {
     await clearApiKey();
     expect(await getApiKey()).toBe('');
   });
+
+  it('ensureApiKeyPersisted：secureStore 为空时把内存里的老 Key 写进去', async () => {
+    const { ensureApiKeyPersisted } = await import('../src/platform/secureStore');
+    await ensureApiKeyPersisted('sk-legacy');
+    expect(bag.get('chess-trainer-api-key')).toBe('sk-legacy');
+  });
+
+  it('ensureApiKeyPersisted：secureStore 已有 Key 时不覆盖；空 Key 不写', async () => {
+    const { ensureApiKeyPersisted } = await import('../src/platform/secureStore');
+    bag.set('chess-trainer-api-key', 'sk-a');
+    await ensureApiKeyPersisted('sk-legacy');
+    expect(bag.get('chess-trainer-api-key')).toBe('sk-a');
+    bag.clear();
+    await ensureApiKeyPersisted('');
+    expect(bag.has('chess-trainer-api-key')).toBe(false);
+  });
 });

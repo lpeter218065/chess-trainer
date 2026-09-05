@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useSettings } from '../store/settings';
 import { useProgress } from '../store/progress';
 import { useGameSessions } from '../store/gameSessions';
-import { getApiKey } from '../platform/secureStore';
+import { getApiKey, ensureApiKeyPersisted } from '../platform/secureStore';
 import { isNative } from '../platform';
 import { LoadingScreen } from './LoadingScreen';
 
@@ -40,7 +40,9 @@ export function HydrationGate({ children }: { children: ReactNode }) {
       if (!cancelled) setReady(true);
       try {
         const key = await getApiKey();
-        if (key && !cancelled) useSettings.getState().setLlm({ apiKey: key });
+        if (cancelled) return;
+        if (key) useSettings.getState().setLlm({ apiKey: key });
+        else await ensureApiKeyPersisted(useSettings.getState().llm.apiKey);
       } catch {
         /* 视为无 Key，不挡住启动 */
       }

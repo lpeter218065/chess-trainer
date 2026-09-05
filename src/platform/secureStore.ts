@@ -83,6 +83,7 @@ async function readFromPlugin(): Promise<string> {
     );
     return v ?? '';
   } catch {
+    console.warn('[secureStore] Keychain 不可用，API Key 回退到 Preferences 明文存储');
     return '';
   }
 }
@@ -136,6 +137,7 @@ export async function setApiKey(key: string): Promise<void> {
     return;
   } catch {
     /* fall through */
+    console.warn('[secureStore] Keychain 不可用，API Key 回退到 Preferences 明文存储');
   }
   const prefs = await fallbackPrefs();
   if (!prefs) return;
@@ -155,4 +157,15 @@ export async function clearApiKey(): Promise<void> {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * 迁移：旧版本把 Key 存在 settings 持久化对象里，新版本只存 secureStore。
+ * hydrate 后若内存里有 Key 而 secureStore 为空，补写一次，避免下次重写 settings 时丢失。
+ */
+export async function ensureApiKeyPersisted(currentKey: string): Promise<void> {
+  if (!currentKey) return;
+  const stored = await getApiKey();
+  if (stored) return;
+  await setApiKey(currentKey);
 }

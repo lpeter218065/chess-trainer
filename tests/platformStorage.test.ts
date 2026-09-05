@@ -28,6 +28,9 @@ function fakeFilesystem() {
     async writeFile({ path, data }: { path: string; data: string }) {
       files.set(path, data);
     },
+    async deleteFile({ path }: { path: string }) {
+      files.delete(path);
+    },
   };
 }
 
@@ -50,6 +53,15 @@ describe('createPlatformStorage', () => {
     await store.setItem('chess-trainer-game-sessions', payload);
     expect(await store.getItem('chess-trainer-game-sessions')).toBe(payload);
     expect(JSON.parse(filesystem.files.get('chess-trainer-game-sessions.json')!)).toEqual({ metas: { a: 1 } });
+  });
+
+  it('large native removeItem 删除文件，之后 getItem 返回 null 而不是空串', async () => {
+    const filesystem = fakeFilesystem();
+    const store = createPlatformStorage('large', { native: true, filesystem });
+    await store.setItem('chess-trainer-game-sessions', '{"metas":{}}');
+    await store.removeItem('chess-trainer-game-sessions');
+    expect(filesystem.files.has('chess-trainer-game-sessions.json')).toBe(false);
+    expect(await store.getItem('chess-trainer-game-sessions')).toBeNull();
   });
 
   it('web small/large 走同一套内存或 localStorage 接口', async () => {

@@ -11,6 +11,7 @@ export type PreferencesLike = {
 export type FilesystemLike = {
   readFile(options: { path: string }): Promise<{ data: string }>;
   writeFile(options: { path: string; data: string }): Promise<void>;
+  deleteFile(options: { path: string }): Promise<void>;
 };
 
 export interface PlatformStorageOpts {
@@ -68,7 +69,11 @@ function largeNative(filesystem: FilesystemLike): StateStorage {
       await filesystem.writeFile({ path: fileFor(name), data: value });
     },
     removeItem: async (name) => {
-      await filesystem.writeFile({ path: fileFor(name), data: '' });
+      try {
+        await filesystem.deleteFile({ path: fileFor(name) });
+      } catch {
+        /* 文件不存在视为已删除 */
+      }
     },
   };
 }
@@ -98,6 +103,9 @@ async function defaultFilesystem(): Promise<FilesystemLike> {
     readFile: ({ path }) => Filesystem.readFile({ path, directory: Directory.Data, encoding: Encoding.UTF8 }) as Promise<{ data: string }>,
     writeFile: async ({ path, data }) => {
       await Filesystem.writeFile({ path, data, directory: Directory.Data, encoding: Encoding.UTF8 });
+    },
+    deleteFile: async ({ path }) => {
+      await Filesystem.deleteFile({ path, directory: Directory.Data });
     },
   };
 }

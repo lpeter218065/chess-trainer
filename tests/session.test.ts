@@ -237,4 +237,27 @@ describe('session store', () => {
     await store.getState().whenIdle();
     expect(store.getState().history).toEqual(['e4', 'e5']);
   });
+
+  it('start() 在第一次 await 前就同步设置 lesson 与可下的局面，不等引擎分析', async () => {
+    let resolveAnalyze: (() => void) | null = null;
+    const slowEngine: EnginePort = {
+      ...fakeEngine(),
+      analyze: (fen) => new Promise((res) => {
+        resolveAnalyze = () => res({ fen, bestMove: 'e2e4', lines: [{ depth: 16, multipv: 1, score: { cp: 0 }, pv: ['e2e4'] }] });
+      }),
+    };
+    const store = createSessionStore({ llmDebounceMs: 0, engine: slowEngine, llm: fakeLlm() });
+    const p = store.getState().start(lesson, diff);
+    // 引擎分析还挂着，但棋盘所需状态已经同步就位：课程页可以立刻渲染
+    const sync = store.getState();
+    expect(sync.lesson?.id).toBe(lesson.id);
+    expect(sync.fen).toBe(lesson.startFen);
+    expect(sync.phase).not.toBe('idle');
+    expect(sync.analysisBefore).toBeNull();
+    resolveAnalyze!();
+    await p;
+    await store.getState().whenIdle();
+    expect(store.getState().phase).toBe('userTurn');
+    expect(store.getState().analysisBefore?.fen).toBe(lesson.startFen);
+  });
 });

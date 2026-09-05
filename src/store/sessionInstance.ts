@@ -45,18 +45,26 @@ export function getSessionStore(): Promise<StoreApi<SessionState>> {
   return storePromise;
 }
 
-/** Start or restore lesson into the session store */
+/** 后台执行 start / hydrate；出错只记录，UI 靠 store 的 engineError / llmError 展示 */
+function runInBackground(p: Promise<unknown>) {
+  p.catch((e) => console.error('[session] 后台启动失败', e));
+}
+
+/** Start or restore lesson into the session store（立即返回，引擎与讲解在后台） */
 export async function bootLessonSession(lesson: Lesson, difficulty: Difficulty): Promise<StoreApi<SessionState>> {
   const store = await getSessionStore();
   const gs = useGameSessions.getState();
   const id = gs.ensureLessonActive(lesson.id, `${lesson.title}`);
   const snap = gs.getLessonSnapshot(id);
   if (snap && snap.lessonId === lesson.id) {
-    await store.getState().hydrateSnapshot(snap, lesson);
+    runInBackground(store.getState().hydrateSnapshot(snap, lesson));
   } else {
-    await store.getState().start(lesson, difficulty);
-    const exported = store.getState().exportSnapshot();
-    if (exported) gs.saveLessonSnapshot(id, exported, `${lesson.title}`);
+    runInBackground(
+      store.getState().start(lesson, difficulty).then(() => {
+        const exported = store.getState().exportSnapshot();
+        if (exported && useGameSessions.getState().activeLessonId === id) gs.saveLessonSnapshot(id, exported, `${lesson.title}`);
+      }),
+    );
   }
   return store;
 }
@@ -71,11 +79,14 @@ export async function switchLessonSession(id: string, lesson: Lesson, difficulty
   gs.setActiveLesson(id);
   const snap = gs.getLessonSnapshot(id);
   if (snap && snap.lessonId === lesson.id) {
-    await store.getState().hydrateSnapshot(snap, lesson);
+    runInBackground(store.getState().hydrateSnapshot(snap, lesson));
   } else {
-    await store.getState().start(lesson, difficulty);
-    const exported = store.getState().exportSnapshot();
-    if (exported) gs.saveLessonSnapshot(id, exported);
+    runInBackground(
+      store.getState().start(lesson, difficulty).then(() => {
+        const exported = store.getState().exportSnapshot();
+        if (exported && useGameSessions.getState().activeLessonId === id) gs.saveLessonSnapshot(id, exported);
+      }),
+    );
   }
 }
 
@@ -87,9 +98,12 @@ export async function newLessonSession(lesson: Lesson, difficulty: Difficulty): 
     if (cur) gs.saveLessonSnapshot(gs.activeLessonId, cur);
   }
   const id = gs.newLesson(lesson.id, `${lesson.title}`);
-  await store.getState().start(lesson, difficulty);
-  const exported = store.getState().exportSnapshot();
-  if (exported) gs.saveLessonSnapshot(id, exported);
+  runInBackground(
+    store.getState().start(lesson, difficulty).then(() => {
+      const exported = store.getState().exportSnapshot();
+      if (exported && useGameSessions.getState().activeLessonId === id) gs.saveLessonSnapshot(id, exported);
+    }),
+  );
 }
 
 export function useSession<T>(store: StoreApi<SessionState>, selector: (s: SessionState) => T): T {

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { lessonsBySection } from '../lessons';
 import { OPENING_DRILLS } from '../lessons/openingDrills';
 import { SECTION_LABEL, type Section } from '../lessons/schema';
@@ -8,6 +8,7 @@ import { useSettings } from '../store/settings';
 import { useGameSessions } from '../store/gameSessions';
 import { LessonCard } from '../components/LessonCard';
 import { SettingsDialog } from '../components/SettingsDialog';
+import { getEngine } from '../engine/getEngine';
 
 const SECTIONS: Section[] = ['opening', 'middlegame', 'endgame'];
 
@@ -17,6 +18,13 @@ export function HomePage() {
   const metas = useGameSessions((s) => s.metas);
   const sessionCount = useMemo(() => Object.keys(metas).length, [metas]);
   const [open, setOpen] = useState(false);
+  // 空闲时预热引擎 Worker/WASM，进课程页时 getEngine() 直接复用同一个单例 Promise
+  useEffect(() => {
+    const warm = () => { void getEngine().catch(() => undefined); };
+    const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
+    if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(warm);
+    else setTimeout(warm, 0);
+  }, []);
   return (
     <div
       className="mx-auto max-w-6xl px-4 py-8 sm:px-6"

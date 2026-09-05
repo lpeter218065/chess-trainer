@@ -46,3 +46,18 @@ describe('createStreamFlusher', () => {
     expect(f.text).toBe('xy');
   });
 });
+
+describe('默认刷新间隔', () => {
+  it('默认间隔为 80 ms：间隔内的 token 合并到一次 trailing flush', () => {
+    vi.useFakeTimers();
+    const out: string[] = [];
+    const f = createStreamFlusher((t) => out.push(t));
+    f.push('a');            // 立即刷
+    f.push('b');
+    vi.advanceTimersByTime(79);
+    expect(out).toEqual(['a']);
+    vi.advanceTimersByTime(1);
+    expect(out).toEqual(['a', 'ab']);
+    vi.useRealTimers();
+  });
+});

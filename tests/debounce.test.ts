@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createDebouncer } from '../src/utils/debounce';
+import { createDebouncer, LLM_DEBOUNCE_MS, ANALYZE_DEBOUNCE_MS } from '../src/utils/debounce';
 
 describe('createDebouncer', () => {
   it('只执行最后一次调度', () => {
@@ -38,5 +38,12 @@ describe('createDebouncer', () => {
     vi.advanceTimersByTime(50);
     expect(fn).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
+  });
+});
+
+describe('防抖常量', () => {
+  it('讲解防抖不超过 150 ms，切步防抖保持 350 ms', () => {
+    expect(LLM_DEBOUNCE_MS).toBeLessThanOrEqual(150);
+    expect(ANALYZE_DEBOUNCE_MS).toBe(350);
   });
 });

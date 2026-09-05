@@ -3,7 +3,7 @@
  * 避免每个 token 触发一次 store set → 全页重渲染。
  * 调用方在流结束 / 出错时调用 finish() 或 cancel()。
  */
-export function createStreamFlusher(flush: (text: string) => void, intervalMs = 50) {
+export function createStreamFlusher(flush: (text: string) => void, intervalMs = 80) {
   let acc = '';
   let timer: ReturnType<typeof setTimeout> | null = null;
   let dirty = false;

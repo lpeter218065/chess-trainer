@@ -1,0 +1,25 @@
+{
+	"appId": "dev.xu.chesstrainer",
+	"appName": "国际象棋训练",
+	"webDir": "dist",
+	"ios": {
+		"contentInset": "never"
+	},
+	"plugins": {
+		"Keyboard": {
+			"resize": "native"
+		},
+		"CapacitorHttp": {
+			"enabled": false
+		}
+	},
+	"packageClassList": [
+		"SecureStorage",
+		"AppPlugin",
+		"FilesystemPlugin",
+		"KeyboardPlugin",
+		"PreferencesPlugin",
+		"StatusBarPlugin",
+		"NativeSsePlugin"
+	]
+}

@@ -1,4 +1,5 @@
 import { createSseParser, extractDelta } from './sseParser';
+import { llmFetch } from './http';
 
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
@@ -24,15 +25,56 @@ export class LlmError extends Error {
   }
 }
 
+/** 去掉末尾斜杠与误填的 /chat/completions */
+export function normalizeLlmBaseUrl(baseUrl: string): string {
+  return baseUrl.trim().replace(/\/+$/, '').replace(/\/chat\/completions$/i, '');
+}
+
+export function chatCompletionsUrl(baseUrl: string): string {
+  return `${normalizeLlmBaseUrl(baseUrl)}/chat/completions`;
+}
+
+export function formatLlmHttpError(status: number, body: string, cfg: LlmConfig): string {
+  const url = chatCompletionsUrl(cfg.baseUrl);
+  const snippet = body.slice(0, 200).trim();
+  if (status === 404) {
+    if (/route .* not found/i.test(body)) {
+      return `模型服务返回 404：接口路径不存在。Base URL 应填到 /v1（如 https://api.openai.com/v1），勿含 /chat/completions。当前 Base URL：${cfg.baseUrl}，请求：${url}${snippet ? `。${snippet}` : ''}`;
+    }
+    const detail = snippet && snippet !== '""' ? `：${snippet}` : '';
+    return `模型服务返回 404${detail}。接口 ${url} 可达，更可能是模型「${cfg.model}」不存在或当前 Key 无权使用，请在设置中核对模型名。`;
+  }
+  return `模型服务返回 ${status}${snippet ? `：${snippet}` : ''}`;
+}
+
 export interface StreamOptions {
   temperature?: number;
   signal?: AbortSignal;
   fetchImpl?: typeof fetch;
+  /** 输出上限（max_completion_tokens），限制尾部延迟 */
+  maxTokens?: number;
+  /** 覆盖 cfg.reasoningEffort；追问/提示等短回答用更低档 */
+  reasoningEffort?: ReasoningEffort;
+}
+
+/** gpt-5.6-sol 等模型不支持 minimal，降档地板为 low */
+const EFFORT_ORDER: ReasoningEffort[] = ['none', 'low', 'medium', 'high'];
+
+/** 比配置低一档的推理强度；low / none 不再降；遗留的 minimal 归一为 low */
+export function lowerEffort(effort: ReasoningEffort | undefined): ReasoningEffort | undefined {
+  if (!effort || effort === 'none') return effort;
+  if (effort === 'minimal') return 'low';
+  const idx = EFFORT_ORDER.indexOf(effort);
+  if (idx <= 0) return 'low';
+  return EFFORT_ORDER[Math.max(1, idx - 1)];
 }
 
 export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts: StreamOptions = {}): AsyncGenerator<string> {
-  const fetchImpl = opts.fetchImpl ?? fetch;
-  const url = `${cfg.baseUrl.replace(/\/+$/, '')}/chat/completions`;
+  const fetchImpl = opts.fetchImpl ?? llmFetch;
+  const url = chatCompletionsUrl(cfg.baseUrl);
+  const rawEffort = opts.reasoningEffort ?? cfg.reasoningEffort;
+  // gpt-5.6-sol 等不支持 minimal，统一抬到 low
+  const effort = rawEffort === 'minimal' ? 'low' : rawEffort;
   let res: Response;
   try {
     res = await fetchImpl(url, {
@@ -43,7 +85,8 @@ export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts:
         messages,
         stream: true,
         temperature: opts.temperature ?? 0.7,
-        ...(cfg.reasoningEffort ? { reasoning_effort: cfg.reasoningEffort } : {}),
+        ...(effort ? { reasoning_effort: effort } : {}),
+        ...(opts.maxTokens ? { max_completion_tokens: opts.maxTokens } : {}),
       }),
       signal: opts.signal,
     });
@@ -53,7 +96,7 @@ export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts:
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new LlmError(`模型服务返回 ${res.status}：${text.slice(0, 300)}`, res.status);
+    throw new LlmError(formatLlmHttpError(res.status, text, cfg), res.status);
   }
   if (!res.body) throw new LlmError('响应没有正文');
   const reader = res.body.getReader();
@@ -80,9 +123,38 @@ export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts:
   }
 }
 
+const CORS_HINT = '该服务不允许从 App 内直连，请换支持跨域的服务或官方接口';
+
+export function modelsUrl(baseUrl: string): string {
+  return `${normalizeLlmBaseUrl(baseUrl)}/models`;
+}
+
+/** 设置页「测试连接」：GET /models */
+export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch = llmFetch): Promise<void> {
+  const url = modelsUrl(cfg.baseUrl);
+  let res: Response;
+  try {
+    res = await fetchImpl(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${cfg.apiKey}` },
+    });
+  } catch {
+    throw new LlmError(CORS_HINT);
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new LlmError(formatLlmHttpError(res.status, text, cfg), res.status);
+  }
+}
+
 /** 设置页“测试连接”：拿到第一个 token 即成功 */
 export async function testConnection(cfg: LlmConfig, fetchImpl?: typeof fetch): Promise<void> {
-  const gen = streamChat(cfg, [{ role: 'user', content: '回复“好”' }], { temperature: 0, fetchImpl });
+  const gen = streamChat(cfg, [{ role: 'user', content: '回复“好”' }], {
+    temperature: 0,
+    fetchImpl,
+    maxTokens: 16,
+    reasoningEffort: cfg.reasoningEffort && cfg.reasoningEffort !== 'none' ? 'low' : cfg.reasoningEffort,
+  });
   const first = await gen.next();
   await gen.return(undefined);
   if (first.done) throw new LlmError('连接成功但没有收到任何内容');

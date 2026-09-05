@@ -46,3 +46,60 @@ export function toPerspective(cpSideToMove: number, sideToMove: Color, perspecti
 export function sideToMove(fen: string): Color {
   return fen.split(' ')[1] === 'b' ? 'b' : 'w';
 }
+
+/** 从 baseFen 起按 UCI 着法前进 n 步 */
+/** 从局面出发，把 SAN 序列转成 UCI（遇非法着法即停） */
+export function sanToUci(fen: string, sans: string[]): string[] {
+  const c = new Chess(fen);
+  const out: string[] = [];
+  for (const san of sans) {
+    try {
+      const m = c.move(san);
+      out.push(m.from + m.to + (m.promotion ?? ''));
+    } catch {
+      break;
+    }
+  }
+  return out;
+}
+
+export function fenAfterUciPlies(baseFen: string, uciMoves: string[], ply: number): { fen: string; lastMove: { from: string; to: string } | null } {
+  const c = new Chess(baseFen);
+  const n = Math.max(0, Math.min(ply, uciMoves.length));
+  let lastMove: { from: string; to: string } | null = null;
+  for (let i = 0; i < n; i++) {
+    try {
+      const m = c.move(uciToSquares(uciMoves[i]));
+      lastMove = { from: m.from, to: m.to };
+    } catch {
+      break;
+    }
+  }
+  return { fen: c.fen(), lastMove };
+}
+
+export function fenAfterPlies(startFen: string, sans: string[], ply: number): { fen: string; lastMove: { from: string; to: string } | null } {
+  const c = new Chess(startFen);
+  const n = Math.max(0, Math.min(ply, sans.length));
+  let lastMove: { from: string; to: string } | null = null;
+  for (let i = 0; i < n; i++) {
+    try {
+      const m = c.move(sans[i]);
+      lastMove = { from: m.from, to: m.to };
+    } catch {
+      break;
+    }
+  }
+  return { fen: c.fen(), lastMove };
+}
+
+export type PlyNav = 'back' | 'forward' | 'start' | 'end';
+
+export function navigatePly(current: number, live: number, nav: PlyNav): number {
+  switch (nav) {
+    case 'back': return Math.max(0, current - 1);
+    case 'forward': return Math.min(live, current + 1);
+    case 'start': return 0;
+    case 'end': return live;
+  }
+}

@@ -15,8 +15,18 @@ export const DIFFICULTIES: Difficulty[] = [
   { id: 'max', label: '满力', skillLevel: 20, depth: 20 },
 ];
 
+/** 开局练习仅两档：一般（会出软着）/ 高级 */
+export const OPENING_OPPONENTS: Difficulty[] = [
+  { id: 'easy', label: '一般对手', skillLevel: 9, depth: 8 },
+  { id: 'hard', label: '高级对手', skillLevel: 20, depth: 16 },
+];
+
 export function difficultyById(id: string): Difficulty {
   return DIFFICULTIES.find((d) => d.id === id) ?? DIFFICULTIES[2];
+}
+
+export function openingOpponentById(id: string): Difficulty {
+  return OPENING_OPPONENTS.find((d) => d.id === id) ?? OPENING_OPPONENTS[0];
 }
 
 /** analyst 用的固定分析深度 */

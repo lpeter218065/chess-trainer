@@ -1,45 +1,192 @@
-import { useMemo, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Chessboard } from 'react-chessboard';
-import { Chess } from 'chess.js';
+import { Chess, type Square } from 'chess.js';
+import type { BoardAnnotations } from '../chess/annotations';
+import { ARROW_COLORS } from '../chess/annotations';
+import type { CommentaryFocus } from '../chess/commentaryMarkers';
+import { EMPTY_TAP, tapMoveReducer, type TapState } from '../chess/tapMove';
+
+const HOVER_SQUARE = 'rgba(30, 77, 56, 0.38)';
+const HOVER_ARROW = '#1e4d38';
+const SELECT_SQUARE = 'rgba(30, 77, 56, 0.48)';
+const TARGET_DOT = 'radial-gradient(circle, rgba(30,77,56,0.42) 19%, transparent 21%)';
 
 export interface BoardProps {
   fen: string;
   orientation: 'white' | 'black';
   interactive: boolean;
-  arrow: { from: string; to: string } | null;
+  annotations: BoardAnnotations | null;
+  hintArrow: { from: string; to: string } | null;
+  hoverFocus: CommentaryFocus | null;
   lastMove: { from: string; to: string } | null;
   onMove(from: string, to: string, promotion?: string): Promise<boolean> | boolean;
+  onBackgroundTap?: () => void;
 }
 
-export function Board({ fen, orientation, interactive, arrow, lastMove, onMove }: BoardProps) {
+function tapInputs(fen: string): {
+  legalMoves: { from: string; to: string; promotion?: string }[];
+  ownPieceSquares: Set<string>;
+} {
+  const chess = new Chess(fen);
+  const turn = chess.turn();
+  const legalMoves = chess.moves({ verbose: true }).map((m) => ({
+    from: m.from,
+    to: m.to,
+    promotion: m.promotion,
+  }));
+  const ownPieceSquares = new Set<string>();
+  for (const file of 'abcdefgh') {
+    for (const rank of '12345678') {
+      const sq = `${file}${rank}` as Square;
+      const p = chess.get(sq);
+      if (p && p.color === turn) ownPieceSquares.add(sq);
+    }
+  }
+  return { legalMoves, ownPieceSquares };
+}
+
+export function Board({
+  fen,
+  orientation,
+  interactive,
+  annotations,
+  hintArrow,
+  hoverFocus,
+  lastMove,
+  onMove,
+  onBackgroundTap,
+}: BoardProps) {
+  const [tap, setTap] = useState<TapState>(EMPTY_TAP);
+  const lastTapRef = useRef<string | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [side, setSide] = useState(0);
+
+  useEffect(() => {
+    setTap(EMPTY_TAP);
+  }, [fen, interactive]);
+
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const box = el.parentElement ?? el;
+    const measure = () => {
+      const w = box.clientWidth;
+      const h = box.clientHeight;
+      const next = Math.floor(Math.min(w || h, h || w));
+      setSide((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, []);
+
+  const tryMove = useCallback((from: string, to: string) => {
+    const chess = new Chess(fen);
+    const legal = chess.moves({ verbose: true }).find((m) => m.from === from && m.to === to);
+    if (!legal) return false;
+    setTap(EMPTY_TAP);
+    void onMove(from, to, legal.promotion ? 'q' : undefined);
+    return true;
+  }, [fen, onMove]);
+
+  const applyTap = useCallback((square: string) => {
+    if (lastTapRef.current === square) return;
+    lastTapRef.current = square;
+    queueMicrotask(() => {
+      lastTapRef.current = null;
+    });
+    onBackgroundTap?.();
+    const { legalMoves, ownPieceSquares } = tapInputs(fen);
+    const result = tapMoveReducer(tap, square, legalMoves, ownPieceSquares, interactive);
+    setTap(result.state);
+    if (result.kind === 'move') {
+      void onMove(result.from, result.to, result.promotion);
+    }
+  }, [fen, interactive, onBackgroundTap, onMove, tap]);
+
   const squareStyles = useMemo(() => {
     const s: Record<string, CSSProperties> = {};
+    for (const sq of annotations?.squares ?? []) {
+      s[sq.square] = { backgroundColor: sq.color };
+    }
+    for (const sq of hoverFocus?.squares ?? []) {
+      s[sq] = { backgroundColor: HOVER_SQUARE };
+    }
     if (lastMove) {
       s[lastMove.from] = { backgroundColor: 'rgba(255, 213, 79, 0.45)' };
       s[lastMove.to] = { backgroundColor: 'rgba(255, 213, 79, 0.65)' };
     }
+    if (tap.selected) {
+      s[tap.selected] = { backgroundColor: SELECT_SQUARE };
+    }
+    for (const to of tap.targets) {
+      s[to] = { ...(s[to] ?? {}), backgroundImage: TARGET_DOT };
+    }
     return s;
-  }, [lastMove]);
+  }, [annotations, hoverFocus, lastMove, tap]);
+
+  const arrows = useMemo(() => {
+    const list = [...(annotations?.arrows ?? [])];
+    if (hintArrow) {
+      list.push({ ...hintArrow, color: ARROW_COLORS.hint });
+    }
+    for (const a of hoverFocus?.arrows ?? []) {
+      list.push({ from: a.from, to: a.to, color: HOVER_ARROW });
+    }
+    return list.map((a) => ({ startSquare: a.from, endSquare: a.to, color: a.color }));
+  }, [annotations, hintArrow, hoverFocus]);
+
+  const onPieceDrop = useCallback(({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) => {
+    if (!interactive || !targetSquare) return false;
+    return tryMove(sourceSquare, targetSquare);
+  }, [interactive, tryMove]);
+
+  const turn = fen.split(' ')[1] === 'b' ? 'b' : 'w';
+
+  const options = useMemo(() => ({
+    id: 'trainer-board',
+    position: fen,
+    boardOrientation: orientation,
+    allowDragging: interactive,
+    dragActivationDistance: 8,
+    // 回退会一次改很多子；默认动画期间内部格子仍是旧局面，点选/拖动会对不上
+    showAnimations: false,
+    canDragPiece: ({ square }: { square: string | null }) => {
+      if (!interactive || !square) return false;
+      const p = new Chess(fen).get(square as Square);
+      return !!p && p.color === turn;
+    },
+    squareStyles,
+    boardStyle: side > 0 ? { width: side, height: side } : { width: '100%', height: '100%' },
+    arrows,
+    onPieceDrop,
+    onPieceDrag: () => {
+      setTap(EMPTY_TAP);
+    },
+    onPieceClick: ({ square }: { square: string | null }) => {
+      if (!square) return;
+      applyTap(square);
+    },
+    onSquareClick: ({ square }: { square: string }) => {
+      applyTap(square);
+    },
+  }), [fen, orientation, interactive, turn, squareStyles, arrows, onPieceDrop, applyTap, side]);
 
   return (
-    <Chessboard
-      options={{
-        id: 'trainer-board',
-        position: fen,
-        boardOrientation: orientation,
-        allowDragging: interactive,
-        squareStyles,
-        arrows: arrow ? [{ startSquare: arrow.from, endSquare: arrow.to, color: '#2563eb' }] : [],
-        onPieceDrop: ({ sourceSquare, targetSquare }) => {
-          if (!targetSquare) return false;
-          // 需要升变时默认升后；chess.js 会拒绝无需升变时带 promotion 的着法，所以先判断
-          const chess = new Chess(fen);
-          const legal = chess.moves({ verbose: true }).find((m) => m.from === sourceSquare && m.to === targetSquare);
-          if (!legal) return false;
-          void onMove(sourceSquare, targetSquare, legal.promotion ? 'q' : undefined);
-          return true;
-        },
-      }}
-    />
+    <div
+      ref={hostRef}
+      className="chess-board-surface flex h-full min-h-0 w-full items-center justify-center"
+      data-selected={tap.selected ?? ''}
+    >
+      {side > 0 && (
+        <div
+          className="shadow-[0_0_0_4px_#8b5e34,0_12px_28px_rgba(28,25,23,0.16)]"
+          style={{ width: side, height: side }}
+        >
+          <Chessboard options={options} />
+        </div>
+      )}
+    </div>
   );
 }

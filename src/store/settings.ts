@@ -1,7 +1,10 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { LlmConfig, ReasoningEffort } from '../llm/client';
+import { normalizeLlmBaseUrl } from '../llm/client';
 import type { DifficultyId } from '../engine/difficulty';
+import { createPlatformStorage } from '../platform/storage';
+import { setApiKey } from '../platform/secureStore';
 
 interface SettingsState {
   llm: LlmConfig;
@@ -12,15 +15,34 @@ interface SettingsState {
   setDifficultyId(id: DifficultyId): void;
 }
 
-const env = import.meta.env;
-const envEffort = env.VITE_LLM_REASONING_EFFORT as ReasoningEffort | undefined;
+type EnvBag = {
+  DEV?: boolean;
+  VITE_LLM_API_KEY?: string;
+  VITE_LLM_BASE_URL?: string;
+  VITE_LLM_MODEL?: string;
+  VITE_LLM_REASONING_EFFORT?: string;
+};
 
-function envLlm(): LlmConfig {
+export function envLlm(env: EnvBag = import.meta.env as EnvBag): LlmConfig {
+  const effort = env.VITE_LLM_REASONING_EFFORT as ReasoningEffort | undefined;
+  const dev = env.DEV === true;
   return {
-    baseUrl: env.VITE_LLM_BASE_URL || 'https://api.openai.com/v1',
-    apiKey: env.VITE_LLM_API_KEY || '',
+    baseUrl: normalizeLlmBaseUrl(env.VITE_LLM_BASE_URL || 'https://api.openai.com/v1'),
+    apiKey: dev ? (env.VITE_LLM_API_KEY || '') : '',
     model: env.VITE_LLM_MODEL || 'gpt-4o-mini',
-    ...(envEffort ? { reasoningEffort: envEffort } : {}),
+    ...(effort ? { reasoningEffort: effort } : {}),
+  };
+}
+
+export function partializeSettings(s: SettingsState) {
+  return {
+    temperature: s.temperature,
+    difficultyId: s.difficultyId,
+    llm: {
+      baseUrl: s.llm.baseUrl,
+      model: s.llm.model,
+      ...(s.llm.reasoningEffort ? { reasoningEffort: s.llm.reasoningEffort } : {}),
+    },
   };
 }
 
@@ -30,27 +52,44 @@ export const useSettings = create<SettingsState>()(
       llm: envLlm(),
       temperature: 0.8,
       difficultyId: 'medium',
-      setLlm: (partial) => set((s) => ({ llm: { ...s.llm, ...partial } })),
+      setLlm: (partial) => {
+        set((s) => ({
+          llm: {
+            ...s.llm,
+            ...partial,
+            ...(partial.baseUrl !== undefined ? { baseUrl: normalizeLlmBaseUrl(partial.baseUrl) } : {}),
+          },
+        }));
+        if (partial.apiKey !== undefined) {
+          void setApiKey(partial.apiKey);
+        }
+      },
       setTemperature: (temperature) => set({ temperature }),
       setDifficultyId: (difficultyId) => set({ difficultyId }),
     }),
     {
       name: 'chess-trainer-settings',
+      storage: createJSONStorage(() => createPlatformStorage('small')),
+      partialize: partializeSettings,
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<SettingsState>;
         const envDefaults = envLlm();
         const stored = p.llm;
+        const preferEnv = Boolean(import.meta.env.DEV && envDefaults.apiKey);
         return {
           ...current,
           ...p,
           llm: {
             ...current.llm,
             ...stored,
-            // 本地未填 key 时用 .env.local，避免 persist 把空 key 盖住环境默认值
-            apiKey: stored?.apiKey || envDefaults.apiKey,
-            baseUrl: stored?.apiKey ? stored.baseUrl : (envDefaults.apiKey ? envDefaults.baseUrl : (stored?.baseUrl ?? current.llm.baseUrl)),
-            model: stored?.apiKey ? stored.model : (envDefaults.apiKey ? envDefaults.model : (stored?.model ?? current.llm.model)),
-            reasoningEffort: stored?.reasoningEffort ?? envDefaults.reasoningEffort ?? current.llm.reasoningEffort,
+            apiKey: preferEnv ? envDefaults.apiKey : (stored?.apiKey || envDefaults.apiKey || current.llm.apiKey),
+            baseUrl: normalizeLlmBaseUrl(
+              preferEnv ? envDefaults.baseUrl : (stored?.baseUrl ?? envDefaults.baseUrl ?? current.llm.baseUrl),
+            ),
+            model: preferEnv ? envDefaults.model : (stored?.model ?? envDefaults.model ?? current.llm.model),
+            reasoningEffort: preferEnv
+              ? (envDefaults.reasoningEffort ?? stored?.reasoningEffort ?? current.llm.reasoningEffort)
+              : (stored?.reasoningEffort ?? envDefaults.reasoningEffort ?? current.llm.reasoningEffort),
           },
         };
       },

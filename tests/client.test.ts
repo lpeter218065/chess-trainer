@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { streamChat, LlmError } from '../src/llm/client';
+import { streamChat, LlmError, normalizeLlmBaseUrl, chatCompletionsUrl, lowerEffort } from '../src/llm/client';
 
 function sseResponse(chunks: string[], status = 200): Response {
   const enc = new TextEncoder();
@@ -47,6 +47,27 @@ describe('streamChat', () => {
     expect(body!.reasoning_effort).toBe('medium');
   });
 
+  it('maxTokens 写入 max_completion_tokens，opts.reasoningEffort 覆盖 cfg', async () => {
+    let body: Record<string, unknown> | null = null;
+    const fetchImpl: typeof fetch = async (_url, init) => {
+      body = JSON.parse(init!.body as string);
+      return sseResponse(['data: {"choices":[{"delta":{"content":"好"}}]}\n\ndata: [DONE]\n\n']);
+    };
+    for await (const _ of streamChat({ ...cfg, reasoningEffort: 'medium' }, [], { fetchImpl, maxTokens: 400, reasoningEffort: 'low' })) void _;
+    expect(body!.max_completion_tokens).toBe(400);
+    expect(body!.reasoning_effort).toBe('low');
+  });
+
+  it('未设 maxTokens 时不带 max_completion_tokens', async () => {
+    let body: Record<string, unknown> | null = null;
+    const fetchImpl: typeof fetch = async (_url, init) => {
+      body = JSON.parse(init!.body as string);
+      return sseResponse(['data: [DONE]\n\n']);
+    };
+    for await (const _ of streamChat(cfg, [], { fetchImpl })) void _;
+    expect(body!.max_completion_tokens).toBeUndefined();
+  });
+
   it('非 2xx 抛 LlmError 带状态码', async () => {
     const fetchImpl: typeof fetch = async () => new Response('{"error":"bad key"}', { status: 401 });
     const gen = streamChat(cfg, [], { fetchImpl });
@@ -56,5 +77,24 @@ describe('streamChat', () => {
   it('网络错误包装为 LlmError', async () => {
     const fetchImpl: typeof fetch = async () => { throw new TypeError('Failed to fetch'); };
     await expect(streamChat(cfg, [], { fetchImpl }).next()).rejects.toBeInstanceOf(LlmError);
+  });
+});
+
+describe('lowerEffort', () => {
+  it('降一档，地板为 low（模型不支持 minimal）', () => {
+    expect(lowerEffort('high')).toBe('medium');
+    expect(lowerEffort('medium')).toBe('low');
+    expect(lowerEffort('low')).toBe('low');
+    expect(lowerEffort('minimal')).toBe('low');
+    expect(lowerEffort('none')).toBe('none');
+    expect(lowerEffort(undefined)).toBeUndefined();
+  });
+});
+
+describe('normalizeLlmBaseUrl', () => {
+  it('去掉末尾斜杠与 chat/completions', () => {
+    expect(normalizeLlmBaseUrl('https://api.example.com/v1/')).toBe('https://api.example.com/v1');
+    expect(normalizeLlmBaseUrl('https://api.example.com/v1/chat/completions')).toBe('https://api.example.com/v1');
+    expect(chatCompletionsUrl('https://api.example.com/v1/chat/completions')).toBe('https://api.example.com/v1/chat/completions');
   });
 });

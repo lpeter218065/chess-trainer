@@ -5,17 +5,31 @@
   "type": "module",
   "scripts": {
     "engine": "node scripts/copy-engine.mjs",
-    "predev": "npm run engine",
-    "prebuild": "npm run engine",
+    "licenses": "node scripts/collect-licenses.mjs",
+    "sync-ios-version": "node scripts/sync-ios-version.mjs",
+    "predev": "npm run engine && npm run licenses",
+    "prebuild": "npm run engine && npm run licenses",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "pretypecheck": "npm run engine",
-    "typecheck": "tsc -b --noEmit"
+    "pretypecheck": "npm run engine && npm run licenses",
+    "typecheck": "tsc -b --noEmit",
+    "ios:sync": "npm run sync-ios-version && npm run build && npx cap sync ios",
+    "ios:open": "npx cap open ios"
   },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^7.1.6",
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
+    "@capacitor/filesystem": "^7.1.8",
+    "@capacitor/ios": "^7.6.9",
+    "@capacitor/keyboard": "^7.0.6",
+    "@capacitor/preferences": "^7.0.4",
+    "@capacitor/status-bar": "^7.0.6",
+    "@chess-trainer/native-sse": "file:plugins/native-sse",
     "@tailwindcss/vite": "^4.3.3",
     "chess.js": "^1.4.0",
     "react": "^19.1.0",
@@ -27,6 +41,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@types/node": "^24.0.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",

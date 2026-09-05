@@ -1,0 +1,14 @@
+国际象棋训练
+Copyright (C) 2026
+
+本程序是自由软件：你可以依 GNU 通用公共许可证第 3 版（或你选择的任何后续版本）
+再分发和/或修改它。完整条款见本仓库根目录的 LICENSE 文件。
+
+本程序内嵌 Stockfish 国际象棋引擎的 WebAssembly 构建，该引擎以 GPLv3 发布。
+官方引擎源码：https://github.com/official-stockfish/Stockfish
+本仓库使用的 WASM 移植：https://github.com/nmrugg/stockfish.js
+
+本 App 的源码与课程数据随本仓库一并公开。第三方依赖的许可清单由构建脚本
+从 package.json 生成，并在 App 内「开源许可」页（#/licenses）列出。
+
+本程序按「原样」提供，不附带任何明示或默示的担保。

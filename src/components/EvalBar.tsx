@@ -6,11 +6,11 @@ export function EvalBar({ cp, playerIsWhite }: { cp: number; playerIsWhite: bool
   const clamped = Math.max(-1000, Math.min(1000, whiteCp));
   const whitePct = 50 + (clamped / 1000) * 50;
   return (
-    <div className="flex items-center gap-3">
-      <div className="h-3 flex-1 overflow-hidden rounded bg-neutral-800">
-        <div className="h-full bg-neutral-100 transition-all" style={{ width: `${whitePct}%` }} />
+    <div className="flex items-center gap-3" aria-label={`评估 ${formatEval(cp)}`}>
+      <div className="h-3 flex-1 overflow-hidden rounded-full border border-ink/20 bg-ink" aria-hidden="true">
+        <div className="h-full bg-white transition-all duration-200" style={{ width: `${whitePct}%` }} />
       </div>
-      <span className="w-16 text-right font-mono text-sm">{formatEval(cp)}</span>
+      <span className="w-16 text-right font-mono text-sm tabular-nums text-ink">{formatEval(cp)}</span>
     </div>
   );
 }

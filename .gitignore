@@ -2,7 +2,13 @@ node_modules
 dist
 public/engine
 src/engine/enginePath.generated.ts
+src/licenses/thirdParty.generated.ts
 *.tsbuildinfo
 .env
 .env.local
 .env.*.local
+ios/App/Pods/
+ios/App/build/
+ios/App/App/public/
+ios/DerivedData/
+ios/App/xcuserdata/

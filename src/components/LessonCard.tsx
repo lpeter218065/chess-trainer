@@ -4,13 +4,20 @@ import type { ProgressRecord } from '../store/progress';
 
 export function LessonCard({ lesson, record }: { lesson: Lesson; record?: ProgressRecord }) {
   return (
-    <Link to={`/lesson/${encodeURIComponent(lesson.id)}`} className="block rounded-lg border border-neutral-200 p-3 hover:border-neutral-400">
+    <Link
+      to={`/lesson/${encodeURIComponent(lesson.id)}`}
+      className="block cursor-pointer rounded-xl border border-line bg-white p-3.5 transition duration-200 hover:border-felt/30 hover:shadow-sm"
+    >
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-medium">{lesson.title}</h3>
-        {record?.completed && <span className={`shrink-0 rounded px-1.5 text-xs text-white ${record.clean ? 'bg-emerald-600' : 'bg-blue-500'}`}>{record.clean ? '干净完成' : '已完成'}</span>}
+        <h3 className="font-medium leading-snug text-ink">{lesson.title}</h3>
+        {record?.completed && (
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${record.clean ? 'bg-felt text-felt-fg' : 'bg-cream text-wood'}`}>
+            {record.clean ? '干净完成' : '已完成'}
+          </span>
+        )}
       </div>
-      <p className="mt-1 text-sm text-neutral-600">{lesson.summary}</p>
-      <p className="mt-1 text-xs text-neutral-400">执{lesson.playerColor === 'w' ? '白' : '黑'} · {record ? `已练 ${record.attempts} 次` : '未开始'}</p>
+      <p className="mt-1 text-sm leading-relaxed text-muted">{lesson.summary}</p>
+      <p className="mt-2 text-xs text-muted/80">执{lesson.playerColor === 'w' ? '白' : '黑'} · {record ? `已练 ${record.attempts} 次` : '未开始'}</p>
     </Link>
   );
 }

@@ -18,6 +18,8 @@ export interface Lesson {
   keyIdeas: string[];
   principleIds: string[];
   modelLine?: string[]; // SAN，从 startFen 开始
+  /** 开局练习：对手按这些 SAN 线路走，离开书后再交给引擎 */
+  opponentBook?: string[][];
   stop: StopRule;
   target: Target;
   evalFloor?: number; // hold 用，默认 -100

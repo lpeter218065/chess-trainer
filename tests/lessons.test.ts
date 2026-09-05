@@ -4,9 +4,9 @@ import { LESSONS } from '../src/lessons';
 import { PRINCIPLES, principleById } from '../src/lessons/principles';
 
 describe('lessons data', () => {
-  it('有 12 课，id 唯一', () => {
-    expect(LESSONS.length).toBe(12);
-    expect(new Set(LESSONS.map((l) => l.id)).size).toBe(12);
+  it('有 25 课，id 唯一', () => {
+    expect(LESSONS.length).toBe(25);
+    expect(new Set(LESSONS.map((l) => l.id)).size).toBe(25);
   });
 
   for (const lesson of LESSONS) {

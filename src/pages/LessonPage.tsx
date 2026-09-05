@@ -376,7 +376,6 @@ export function LessonView({
         <div className="grid h-full min-h-0 w-full grid-rows-[minmax(0,1fr)_auto] gap-1.5 overflow-hidden">
           <div className="min-h-0 min-w-0">
               <Board
-                key={s.fen}
                 fen={viewed.fen}
                 orientation={orientation}
                 interactive={canPlayHere}

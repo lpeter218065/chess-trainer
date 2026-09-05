@@ -11,11 +11,156 @@
 ## Global Constraints
 
 - 对应 spec：`docs/superpowers/specs/2026-09-05-performance-speed-design.md`。
-- **工作区正在被其他 agent 修改**（85 个未提交文件）。每个 Task 开始前必须重新读取要改的文件，按内容而不是行号定位；发现该 Task 的行为已被实现时，只补测试并验证，不要重复实现。只 `git add` 本 Task 触及的文件，不要 `git add -A`。
+- 基线：Grok 的 iPad 实现已整体提交为 `45e6e37`，本计划在分支 `perf/speed` 上执行。每个 Task 开始前重新读取要改的文件，按内容而不是行号定位；发现该 Task 的行为已被实现时，只补测试并验证，不要重复实现。只 `git add` 本 Task 触及的文件，不要 `git add -A`；`graphify-out/` 永不提交。
+- 页面已改用 `TrainerLayout`（`src/components/layout/TrainerLayout.tsx`），`Board` 已含点选走子；plan 里引用的旧布局代码片段以当前文件为准，只改订阅方式与右栏组件，不动布局与文案。
 - 保持 UI 文案与视觉不变；不改 `LessonSnapshot` / `ExploreSnapshot` 字段。
 - 常量：`LLM_DEBOUNCE_MS = 120`，`ANALYZE_DEBOUNCE_MS = 350`（不变），`createStreamFlusher` 默认间隔 `80`，`ANALYSIS_DEPTH = 16` 配 `movetime 1500`，对手 `moveTimeMs`：入门 / 初级 / 中级 800，高级 1500，满力 3000。
 - 每个 Task 结束时 `npm test` 与 `npm run typecheck` 必须通过。
-- 顺序：Task 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11。Task 8（乐观走子）依赖 Task 6（ExplorePage 拆订阅）。
+- 顺序：Task 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11。Task 8（乐观走子）依赖 Task 6（ExplorePage 拆订阅）。
+
+---
+
+### Task 0: 修复 iPad 实现审查发现的三项问题
+
+**Files:**
+- Modify: `src/platform/secureStore.ts`
+- Modify: `src/platform/storage.ts`
+- Modify: `src/components/HydrationGate.tsx`
+- Test: `tests/secureStore.test.ts`、`tests/platformStorage.test.ts`
+
+**Interfaces:**
+- Consumes: `getApiKey() / setApiKey()`（`src/platform/secureStore.ts`）、`FilesystemLike`（`src/platform/storage.ts`）、`configureSecureStore()`（测试用）。
+- Produces: `ensureApiKeyPersisted(currentKey: string): Promise<void>`；`FilesystemLike.deleteFile(options: { path: string }): Promise<void>`。
+
+背景：Grok 的实现把 API Key 从 settings 持久化对象里剔除（`partializeSettings`），改存 secureStore。但 Web 老用户的 Key 还在旧持久化对象里，`merge` 会把它读进内存 state，而 secureStore 里是空的；下次任何设置变动重写持久化对象后再刷新，Key 就丢了。另外 Filesystem 版 `removeItem` 写空字符串会让下次 hydrate 的 `JSON.parse('')` 抛错；Keychain 不可用时静默降级到 Preferences 明文没有任何提示。
+
+- [ ] **Step 1: 写失败测试**
+
+`tests/secureStore.test.ts` 的 `describe('secureStore native', ...)` 内追加（复用该 describe 里已有的 `bag` 与 `plugin`）：
+
+```ts
+  it('ensureApiKeyPersisted：secureStore 为空时把内存里的老 Key 写进去', async () => {
+    const { ensureApiKeyPersisted } = await import('../src/platform/secureStore');
+    await ensureApiKeyPersisted('sk-legacy');
+    expect(bag.get('chess-trainer-api-key')).toBe('sk-legacy');
+  });
+
+  it('ensureApiKeyPersisted：secureStore 已有 Key 时不覆盖；空 Key 不写', async () => {
+    const { ensureApiKeyPersisted } = await import('../src/platform/secureStore');
+    bag.set('chess-trainer-api-key', 'sk-a');
+    await ensureApiKeyPersisted('sk-legacy');
+    expect(bag.get('chess-trainer-api-key')).toBe('sk-a');
+    bag.clear();
+    await ensureApiKeyPersisted('');
+    expect(bag.has('chess-trainer-api-key')).toBe(false);
+  });
+```
+
+`tests/platformStorage.test.ts`：给 `fakeFilesystem()` 增加 `deleteFile`，并追加用例：
+
+```ts
+    async deleteFile({ path }: { path: string }) {
+      files.delete(path);
+    },
+```
+
+```ts
+  it('large native removeItem 删除文件，之后 getItem 返回 null 而不是空串', async () => {
+    const filesystem = fakeFilesystem();
+    const store = createPlatformStorage('large', { native: true, filesystem });
+    await store.setItem('chess-trainer-game-sessions', '{"metas":{}}');
+    await store.removeItem('chess-trainer-game-sessions');
+    expect(filesystem.files.has('chess-trainer-game-sessions.json')).toBe(false);
+    expect(await store.getItem('chess-trainer-game-sessions')).toBeNull();
+  });
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx vitest run tests/secureStore.test.ts tests/platformStorage.test.ts`
+Expected: FAIL（`ensureApiKeyPersisted` 不存在；`files.has(...)` 为 true 且 `getItem` 返回 `''`）。
+
+- [ ] **Step 3: 实现**
+
+`src/platform/secureStore.ts` 末尾追加：
+
+```ts
+/**
+ * 迁移：旧版本把 Key 存在 settings 持久化对象里，新版本只存 secureStore。
+ * hydrate 后若内存里有 Key 而 secureStore 为空，补写一次，避免下次重写 settings 时丢失。
+ */
+export async function ensureApiKeyPersisted(currentKey: string): Promise<void> {
+  if (!currentKey) return;
+  const stored = await getApiKey();
+  if (stored) return;
+  await setApiKey(currentKey);
+}
+```
+
+同文件 `getApiKey` 与 `setApiKey` 里进入 `fallbackPrefs()` 之前各加一行：
+
+```ts
+  console.warn('[secureStore] Keychain 不可用，API Key 回退到 Preferences 明文存储');
+```
+
+（`getApiKey` 放在第一个 `catch` 之后、读取 fallback 之前；`setApiKey` 放在 `/* fall through */` 之后。）
+
+`src/platform/storage.ts`：
+
+```ts
+export type FilesystemLike = {
+  readFile(options: { path: string }): Promise<{ data: string }>;
+  writeFile(options: { path: string; data: string }): Promise<void>;
+  deleteFile(options: { path: string }): Promise<void>;
+};
+```
+
+`largeNative.removeItem`：
+
+```ts
+    removeItem: async (name) => {
+      try {
+        await filesystem.deleteFile({ path: fileFor(name) });
+      } catch {
+        /* 文件不存在视为已删除 */
+      }
+    },
+```
+
+`defaultFilesystem()` 返回对象追加：
+
+```ts
+    deleteFile: async ({ path }) => {
+      await Filesystem.deleteFile({ path, directory: Directory.Data });
+    },
+```
+
+`src/components/HydrationGate.tsx` 第一个 `useEffect` 里读 Key 的部分改为：
+
+```tsx
+      try {
+        const key = await getApiKey();
+        if (cancelled) return;
+        if (key) useSettings.getState().setLlm({ apiKey: key });
+        else await ensureApiKeyPersisted(useSettings.getState().llm.apiKey);
+      } catch {
+        /* 视为无 Key，不挡住启动 */
+      }
+```
+
+并把 import 改为 `import { getApiKey, ensureApiKeyPersisted } from '../platform/secureStore';`。
+
+- [ ] **Step 4: 运行**
+
+Run: `npm run typecheck && npm test`
+Expected: 全部 PASS。
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/platform/secureStore.ts src/platform/storage.ts src/components/HydrationGate.tsx tests/secureStore.test.ts tests/platformStorage.test.ts
+git commit -m "fix: 迁移 Web 老用户 API Key 到 secureStore；Filesystem removeItem 真删文件；Keychain 降级告警"
+```
 
 ---
 

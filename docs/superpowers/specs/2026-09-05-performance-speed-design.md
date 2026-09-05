@@ -28,8 +28,7 @@ Stockfish 18 lite 单线程，本机 M 系列，Node 环境：
 
 - `bootLessonSession` / `switchLessonSession` / `newLessonSession` 在 `getSessionStore()` 返回后立刻 resolve store；`start()` / `hydrateSnapshot()` 以 `void track(...)` 方式在后台执行。store 的 `phase: 'preparing'` 与 `engineThinking` 已足以驱动现有 UI 的占位显示，不新增状态。
 - 首次保存快照（`gs.saveLessonSnapshot(id, exported)`）改为在 `start()` 完成后于后台执行；已有的 400 ms 自动保存订阅会覆盖后续变化。
-- `HomePage` 挂载后用 `requestIdleCallback`（不可用时 `setTimeout 0`）调用 `getEngine()` 预热两个 Worker。
-- `index.html` 为引擎 `.wasm` 增加 `<link rel="preload" as="fetch" crossorigin>`，URL 由 `enginePath.generated.ts` 的生成脚本同时写入（脚本已生成 JS 路径，补一个 WASM 路径导出并让 `scripts/copy-engine.mjs` 注入 `index.html` 的占位标记）。
+- `HomePage` 挂载后用 `requestIdleCallback`（不可用时 `setTimeout 0`）调用 `getEngine()` 预热两个 Worker。预热本身就会拉取并编译 `.wasm`，不再另加 `<link rel="preload">`（Worker 内的 fetch 不消费文档级 preload）。
 
 验收：课程页从路由进入到棋盘可见，不再等待任何引擎搜索；引擎尚未就绪时棋盘不可交互并显示现有 preparing 文案。
 

@@ -33,7 +33,8 @@ export function nativeSseFetch(
   plugin: NativeSsePlugin,
   opts?: { openTimeoutMs?: number },
 ): typeof fetch {
-  const openTimeoutMs = opts?.openTimeoutMs ?? 60_000;
+  // 高推理强度模型（如 reasoning_effort=high）首包可能超过 60 s，留足 120 s 再判超时
+  const openTimeoutMs = opts?.openTimeoutMs ?? 120_000;
   return async (input, init) => {
     if (init?.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');

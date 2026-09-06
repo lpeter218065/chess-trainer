@@ -10,9 +10,12 @@ interface SettingsState {
   llm: LlmConfig;
   temperature: number;
   difficultyId: DifficultyId;
+  /** 摇一摇 / 三指触屏呼出调试日志。默认关闭，避免误触；设置里的「查看日志」按钮不受影响。 */
+  debugGesturesEnabled: boolean;
   setLlm(partial: Partial<LlmConfig>): void;
   setTemperature(t: number): void;
   setDifficultyId(id: DifficultyId): void;
+  setDebugGesturesEnabled(v: boolean): void;
 }
 
 type EnvBag = {
@@ -38,6 +41,7 @@ export function partializeSettings(s: SettingsState) {
   return {
     temperature: s.temperature,
     difficultyId: s.difficultyId,
+    debugGesturesEnabled: s.debugGesturesEnabled,
     llm: {
       baseUrl: s.llm.baseUrl,
       model: s.llm.model,
@@ -52,6 +56,7 @@ export const useSettings = create<SettingsState>()(
       llm: envLlm(),
       temperature: 0.8,
       difficultyId: 'medium',
+      debugGesturesEnabled: false,
       setLlm: (partial) => {
         set((s) => ({
           llm: {
@@ -66,6 +71,7 @@ export const useSettings = create<SettingsState>()(
       },
       setTemperature: (temperature) => set({ temperature }),
       setDifficultyId: (difficultyId) => set({ difficultyId }),
+      setDebugGesturesEnabled: (debugGesturesEnabled) => set({ debugGesturesEnabled }),
     }),
     {
       name: 'chess-trainer-settings',

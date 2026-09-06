@@ -7,7 +7,8 @@ import { requestDebugOverlay } from '../debug/install';
 import { debugLog } from '../debug/log';
 
 export function SettingsDialog({ onClose }: { onClose(): void }) {
-  const { llm, temperature, difficultyId, setLlm, setTemperature, setDifficultyId } = useSettings();
+  const { llm, temperature, difficultyId, debugGesturesEnabled, setLlm, setTemperature, setDifficultyId, setDebugGesturesEnabled } =
+    useSettings();
   const [status, setStatus] = useState<string>('');
   const [showKey, setShowKey] = useState(false);
   useEffect(() => {
@@ -91,6 +92,14 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
           <button type="button" className="btn" onClick={() => requestDebugOverlay(true)}>查看日志</button>
           <button type="button" className="btn" onClick={onClose}>关闭</button>
         </div>
+        <label className="mt-3 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={debugGesturesEnabled}
+            onChange={(e) => setDebugGesturesEnabled(e.target.checked)}
+          />
+          启用调试手势（摇一摇 / 三指触屏）
+        </label>
         {status && (
           <p
             className={`mt-3 max-w-full min-w-0 text-sm break-words [overflow-wrap:anywhere] ${status.startsWith('失败') ? 'text-danger' : 'text-muted'}`}

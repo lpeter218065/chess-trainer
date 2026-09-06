@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { envLlm, partializeSettings } from '../src/store/settings';
+import { envLlm, partializeSettings, useSettings } from '../src/store/settings';
 
 describe('envLlm', () => {
   it('生产模式下 apiKey 恒为空', () => {
@@ -27,13 +27,24 @@ describe('partializeSettings', () => {
       llm: { baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-secret', model: 'gpt-x' },
       temperature: 0.8,
       difficultyId: 'medium',
+      debugGesturesEnabled: false,
       setLlm() {},
       setTemperature() {},
       setDifficultyId() {},
+      setDebugGesturesEnabled() {},
     });
     expect(sliced).not.toHaveProperty('llm.apiKey');
     expect(JSON.stringify(sliced)).not.toContain('sk-secret');
     expect(sliced.llm.baseUrl).toBe('https://api.openai.com/v1');
     expect(sliced.llm.model).toBe('gpt-x');
+  });
+});
+
+describe('debugGesturesEnabled', () => {
+  it('debugGesturesEnabled 默认关闭且被持久化', () => {
+    expect(useSettings.getState().debugGesturesEnabled).toBe(false);
+    useSettings.getState().setDebugGesturesEnabled(true);
+    expect(partializeSettings(useSettings.getState()).debugGesturesEnabled).toBe(true);
+    useSettings.getState().setDebugGesturesEnabled(false);
   });
 });

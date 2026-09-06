@@ -129,20 +129,25 @@ export async function getApiKey(): Promise<string> {
   });
 }
 
+/** 永不抛出：Keychain 与 Preferences 都失败时只记一条 warn，避免未处理的 Promise 拒绝。 */
 export async function setApiKey(key: string): Promise<void> {
-  const p = await plugin();
   try {
+    // plugin() 自身也可能失败（动态 import 超时 / 插件未打包），必须一起包在 try 里
+    const p = await plugin();
     if (!key) await withTimeout(p.remove(API_KEY_STORAGE), 800);
     else await withTimeout(p.set(API_KEY_STORAGE, key), 800);
     return;
   } catch {
-    /* fall through */
     console.warn('[secureStore] Keychain 不可用，API Key 回退到 Preferences 明文存储');
   }
-  const prefs = await fallbackPrefs();
-  if (!prefs) return;
-  if (!key) await prefs.remove({ key: API_KEY_STORAGE });
-  else await prefs.set({ key: API_KEY_STORAGE, value: key });
+  try {
+    const prefs = await fallbackPrefs();
+    if (!prefs) return;
+    if (!key) await prefs.remove({ key: API_KEY_STORAGE });
+    else await prefs.set({ key: API_KEY_STORAGE, value: key });
+  } catch (e) {
+    console.warn('[secureStore] Preferences 回退写入失败，API Key 未持久化', e);
+  }
 }
 
 export async function clearApiKey(): Promise<void> {

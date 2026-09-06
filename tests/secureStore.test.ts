@@ -106,6 +106,17 @@ describe('secureStore native', () => {
     expect(await getApiKey()).toBe('');
   });
 
+  it('setApiKey：插件整体不可用时不抛，回退到 fallback prefs', async () => {
+    const prefs = new Map<string, string>();
+    configureSecureStore({
+      native: true,
+      plugin: { get: async () => { throw new Error('not implemented'); }, set: async () => { throw new Error('not implemented'); }, remove: async () => { throw new Error('not implemented'); } },
+      fallback: { get: async ({ key }) => ({ value: prefs.get(key) ?? null }), set: async ({ key, value }) => { prefs.set(key, value); }, remove: async ({ key }) => { prefs.delete(key); } },
+    });
+    await expect(setApiKey('sk-x')).resolves.toBeUndefined();
+    expect(prefs.get('chess-trainer-api-key')).toBe('sk-x');
+  });
+
   it('ensureApiKeyPersisted：secureStore 为空时把内存里的老 Key 写进去', async () => {
     const { ensureApiKeyPersisted } = await import('../src/platform/secureStore');
     await ensureApiKeyPersisted('sk-legacy');

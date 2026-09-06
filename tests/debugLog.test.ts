@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createDebugLog, redactSecrets } from '../src/debug/log';
+import { stringifyArg } from '../src/debug/install';
 
 describe('redactSecrets', () => {
   it('去掉 Bearer、sk- 与 apiKey，不留下密钥原文', () => {
@@ -39,5 +40,21 @@ describe('createDebugLog', () => {
     log.clear();
     expect(log.list()).toEqual([]);
     expect(log.format()).toBe('');
+  });
+});
+
+describe('stringifyArg', () => {
+  it('WebKit 风格 stack 不含 message 时仍保留正文', () => {
+    const e = new Error('"NativeSse.start()" is not implemented on ios');
+    (e as Error & { code?: string }).code = 'UNIMPLEMENTED';
+    e.stack = 'wrapper@capacitor://localhost/assets/index-abc.js:12:48496\n@capacitor://localhost/assets/index-abc.js:12:100';
+    const s = stringifyArg(e);
+    expect(s).toContain('is not implemented on ios');
+    expect(s).toContain('UNIMPLEMENTED');
+    expect(s).toContain('index-abc.js:12:48496');
+  });
+  it('非 Error 值按 JSON / String 输出', () => {
+    expect(stringifyArg({ a: 1 })).toBe('{"a":1}');
+    expect(stringifyArg('x')).toBe('x');
   });
 });

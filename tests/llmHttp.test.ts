@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bufferedResponse, capacitorHttpFetch } from '../src/llm/http';
+import { bufferedResponse, capacitorHttpFetch, createLlmFetch } from '../src/llm/http';
 import { streamChat, probeLlmConnection } from '../src/llm/client';
 
 const cfg = { baseUrl: 'http://example.test/v1', apiKey: 'sk-test', model: 'gpt-x' };
@@ -47,5 +47,51 @@ describe('capacitorHttpFetch', () => {
       },
     };
     await probeLlmConnection(cfg, capacitorHttpFetch(http));
+  });
+});
+
+describe('createLlmFetch', () => {
+  const okResponse = () => new Response('ok', { status: 200 });
+  it('原生且插件可用时走原生 fetch', async () => {
+    let nativeCalls = 0;
+    const f = createLlmFetch({
+      isNative: () => true,
+      isPluginAvailable: () => true,
+      nativeFetch: async () => async () => { nativeCalls++; return okResponse(); },
+      webFetch: async () => { throw new Error('should not use web fetch'); },
+    });
+    await f('https://x/v1/models');
+    expect(nativeCalls).toBe(1);
+  });
+  it('原生但插件不可用时回退 web fetch', async () => {
+    let webCalls = 0;
+    const f = createLlmFetch({
+      isNative: () => true,
+      isPluginAvailable: () => false,
+      nativeFetch: async () => { throw new Error('should not load native'); },
+      webFetch: async () => { webCalls++; return okResponse(); },
+    });
+    await f('https://x/v1/models');
+    expect(webCalls).toBe(1);
+  });
+  it('Web 端直接用 web fetch', async () => {
+    let webCalls = 0;
+    const f = createLlmFetch({ isNative: () => false, isPluginAvailable: () => true, nativeFetch: async () => { throw new Error('no'); }, webFetch: async () => { webCalls++; return okResponse(); } });
+    await f('https://x/v1/models');
+    expect(webCalls).toBe(1);
+  });
+  it('原生可用性只检查一次', async () => {
+    let checks = 0;
+    let loads = 0;
+    const f = createLlmFetch({
+      isNative: () => true,
+      isPluginAvailable: () => { checks++; return true; },
+      nativeFetch: async () => { loads++; return async () => okResponse(); },
+      webFetch: async () => { throw new Error('should not use web fetch'); },
+    });
+    await f('https://x/v1/models');
+    await f('https://x/v1/models');
+    expect(checks).toBe(1);
+    expect(loads).toBe(1);
   });
 });

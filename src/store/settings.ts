@@ -66,7 +66,7 @@ export const useSettings = create<SettingsState>()(
           },
         }));
         if (partial.apiKey !== undefined) {
-          void setApiKey(partial.apiKey);
+          void setApiKey(partial.apiKey).catch((e) => console.warn('[settings] 保存 API Key 失败', e));
         }
       },
       setTemperature: (temperature) => set({ temperature }),

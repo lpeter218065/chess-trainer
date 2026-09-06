@@ -11,8 +11,8 @@
   --color-cream: #f0d9b5;
   --color-danger: #b42318;
   --color-select: #ead7a8;
-  --font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Newsreader", ui-serif, Georgia, serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-display: ui-serif, Georgia, "Songti SC", "Noto Serif CJK SC", serif;
 }
 
 html {

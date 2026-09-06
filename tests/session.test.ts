@@ -260,4 +260,48 @@ describe('session store', () => {
     expect(store.getState().phase).toBe('userTurn');
     expect(store.getState().analysisBefore?.fen).toBe(lesson.startFen);
   });
+
+  it('走子命中走子前 MultiPV 的某条线时，直接复用该线分数，少跑一次引擎', async () => {
+    /** 假引擎带 analyze 计数；extraLine 用来模拟 MultiPV 第二条线 */
+    const countingEngine = (extraLine?: { multipv: number; score: { cp: number }; pv: string[] }) => {
+      const first = (fen: string) => {
+        const m = new Chess(fen).moves({ verbose: true })[0];
+        return m.from + m.to + (m.promotion ?? '');
+      };
+      const e = {
+        calls: 0,
+        async analyze(fen: string) {
+          e.calls++;
+          const bm = first(fen);
+          const lines = [{ depth: 16, multipv: 1, score: { cp: 20 }, pv: [bm] }];
+          if (extraLine) lines.push({ depth: 16, ...extraLine });
+          return { fen, bestMove: bm, lines };
+        },
+        async opponentMove(fen: string) { return first(fen); },
+        dispose() {},
+      };
+      return e as EnginePort & { calls: number };
+    };
+
+    const playD3 = async (engine: EnginePort) => {
+      const store = createSessionStore({ llmDebounceMs: 0, engine, llm: fakeLlm() });
+      await store.getState().start(lesson, diff);
+      await store.getState().whenIdle();
+      expect(await store.getState().playUserMove('d2', 'd3')).toBe(true);
+      await store.getState().whenIdle();
+      return store;
+    };
+
+    // 单线引擎：走子前分析里没有 d2d3，走子后局面得单独再搜一次
+    const plain = countingEngine();
+    await playD3(plain);
+    expect(plain.calls).toBe(3); // 开局分析 + 走子后局面 + 引擎应手后的下一手分析
+
+    // 双线引擎：d2d3 就是第 2 条线，分数直接拿来用
+    const multi = countingEngine({ multipv: 2, score: { cp: -40 }, pv: ['d2d3'] });
+    const store = await playD3(multi);
+    expect(multi.calls).toBe(plain.calls - 1); // 省掉走子后局面那次搜索
+    // 线分数 -40 是走子前行棋方（白＝玩家）视角，取负得对手视角 +40，再转回玩家视角 -40
+    expect(store.getState().rounds[0].userMove.evalAfter).toBe(-40);
+  });
 });

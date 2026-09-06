@@ -18,6 +18,7 @@ import { continueThread, recordAssistant } from '../llm/chatThread';
 import { classifyMove, type Quality } from '../chess/quality';
 import { scoreToCp } from '../chess/quality';
 import { fenAfterPlies, sideToMove, uciToSan } from '../chess/notation';
+import { evalAfterFromLines } from '../chess/evalFromLines';
 import { START_FEN, parseFen, parsePgn } from '../chess/pgn';
 import { createDebouncer, ANALYZE_DEBOUNCE_MS, LLM_DEBOUNCE_MS } from '../utils/debounce';
 import { createStreamFlusher } from '../utils/streamFlusher';
@@ -515,27 +516,26 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
         } catch {
           return false;
         }
-
         const userUci = move.from + move.to + (move.promotion ?? '');
-        let quality: Quality = 'good';
-        if (s0.analysis?.fen === fen) {
-          quality = classifyMove({
-            evalBefore: sideEval(s0.evalCp, sideToMove(fen)),
-            evalAfter: sideEval(s0.evalCp, sideToMove(fen)),
-            userMoveUci: userUci,
-            bestMoveUci: s0.analysis.bestMove,
-          });
-        }
+        const movingSide = sideToMove(fen);
+        const fenAfter = chess.fen();
+        /** 走子前分析正好是这个局面才能复用，否则后台补算 */
+        const analysisBefore = s0.analysis?.fen === fen ? s0.analysis : null;
+        /** 立刻能断言的只有「最佳」；其余等后台评估，避免瞎标成 good */
+        const instantQuality: Quality | null =
+          analysisBefore && userUci === analysisBefore.bestMove ? 'best' : null;
 
+        // 1) 立刻写树上盘，不等引擎
         const parentId: MoveNodeId | null = ply === 0 ? null : s0.path[ply - 1];
         const existing = findChildBySan(s0.tree, parentId, move.san);
         let tree = s0.tree;
         let nodeId: MoveNodeId;
         if (existing) {
           nodeId = existing;
-          tree = setNodeQuality(tree, nodeId, quality);
+          // 重走已有着法：旧质量先留着，别被 null 抹掉
+          if (instantQuality) tree = setNodeQuality(tree, nodeId, instantQuality);
         } else {
-          const appended = appendChild(tree, parentId, move.san, quality);
+          const appended = appendChild(tree, parentId, move.san, instantQuality);
           tree = appended.tree;
           nodeId = appended.id;
         }
@@ -547,16 +547,42 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
         }
 
         analyzeDebouncer.cancel();
-        analyzeToken += 1;
-        set({
-          tree,
-          path,
-          reviewDepth: null,
-          analysis: null,
-          analyzing: false,
-          error: null,
-        });
-        scheduleAnalyzeAtPly(path.length);
+        const token = ++analyzeToken;
+        set({ tree, path, reviewDepth: null, analysis: null, analyzing: true, error: null });
+
+        // 2) 后台补写：质量与后续走子无关，必须写完；末端 MultiPV 只有最新一步才跑
+        void (async () => {
+          try {
+            const before = analysisBefore ?? (await engine.analyze(fen, 3));
+            const knownCp = evalAfterFromLines(before, userUci);
+            const evalAfterWhite =
+              knownCp !== null
+                ? sideToMove(fenAfter) === 'w'
+                  ? knownCp
+                  : -knownCp
+                : whiteEval(await engine.analyze(fenAfter, 1));
+            const quality = classifyMove({
+              evalBefore: sideEval(whiteEval(before), movingSide),
+              evalAfter: sideEval(evalAfterWhite, movingSide),
+              userMoveUci: userUci,
+              bestMoveUci: before.bestMove,
+            });
+            if (get().tree.nodes[nodeId]) {
+              set((st) => ({ tree: setNodeQuality(st.tree, nodeId, quality) }));
+            }
+            if (token !== analyzeToken) return; // 更新的走子/切步已接手
+            set({ evalCp: evalAfterWhite });
+
+            // 3) 末端局面的 MultiPV（path 可能比刚落子的节点更深）
+            const tipFen = fenAfterPlies(s0.startFen, pathSans(tree, path), path.length).fen;
+            const analysis = await engine.analyze(tipFen, 3);
+            if (token !== analyzeToken) return;
+            set({ analysis, evalCp: whiteEval(analysis), analyzing: false });
+          } catch (e) {
+            if (token !== analyzeToken) return;
+            set({ analyzing: false, error: `分析失败：${(e as Error).message}` });
+          }
+        })();
         return true;
       },
 

@@ -205,3 +205,49 @@ describe('explore variation tree', () => {
     await waitIdle(store);
   });
 });
+
+function slowEngine(delayMs: number): EnginePort & { calls: number } {
+  const base = fakeEngine();
+  const e = {
+    calls: 0,
+    async analyze(fen: string, multiPv: number) {
+      e.calls++;
+      await new Promise((r) => setTimeout(r, delayMs));
+      return base.analyze(fen, multiPv);
+    },
+    opponentMove: base.opponentMove,
+    dispose() {},
+  };
+  return e;
+}
+
+describe('explore 乐观走子', () => {
+  beforeEach(() => resetMoveTreeIds());
+
+  it('分析进行中也能走子，着法立即上盘，质量稍后补写', async () => {
+    const engine = slowEngine(60);
+    const store = createExploreStore(engine, fakeLlm);
+    store.getState().loadStart();
+    await waitIdle(store);
+
+    const p1 = store.getState().makeMove('e2', 'e4');
+    // 不等分析：树里已经有 e4
+    expect(pathSans(store.getState().tree, store.getState().path)).toEqual(['e4']);
+    expect(store.getState().analyzing).toBe(true);
+    expect(await p1).toBe(true);
+
+    // 分析尚未结束时再走一步，不能被吞
+    const ok2 = await store.getState().makeMove('e7', 'e5');
+    expect(ok2).toBe(true);
+    expect(pathSans(store.getState().tree, store.getState().path)).toEqual(['e4', 'e5']);
+
+    await waitIdle(store);
+    await new Promise((r) => setTimeout(r, 150));
+    const qs = store.getState().qualities();
+    expect(qs).toHaveLength(2);
+    expect(qs.every((q) => q !== null)).toBe(true);
+    // 最终分析对应最后局面
+    const fenAfter = (() => { const c = new Chess(); c.move('e4'); c.move('e5'); return c.fen(); })();
+    expect(store.getState().analysis?.fen).toBe(fenAfter);
+  });
+});

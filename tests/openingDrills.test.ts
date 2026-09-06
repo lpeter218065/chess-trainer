@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Chess } from 'chess.js';
-import {
-  OPENING_DRILLS,
-  drillToLesson,
-  fenAfterSans,
-  openingDrillById,
-} from '../src/lessons/openingDrills';
+import { OPENING_DRILLS, openingDrillById } from '../src/lessons/openingDrills';
+import { drillToLesson, fenAfterSans } from '../src/lessons/drillLesson';
 import { pickBookReply } from '../src/chess/openingBook';
 import { START_FEN } from '../src/chess/pgn';
 import { OPENING_OPPONENTS } from '../src/engine/difficulty';

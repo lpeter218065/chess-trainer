@@ -4,7 +4,8 @@ import { createSessionStore, type LlmPort } from '../src/store/session';
 import type { EnginePort } from '../src/engine/engineService';
 import { lessonById } from '../src/lessons';
 import { difficultyById } from '../src/engine/difficulty';
-import { drillToLesson, openingDrillById, OPENING_DRILLS } from '../src/lessons/openingDrills';
+import { openingDrillById, OPENING_DRILLS } from '../src/lessons/openingDrills';
+import { drillToLesson } from '../src/lessons/drillLesson';
 
 /** 假引擎：最佳着法 = 第一个合法着法；评估恒为 +20（行棋方视角） */
 function fakeEngine(): EnginePort {

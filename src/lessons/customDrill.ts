@@ -1,6 +1,6 @@
 import type { Color } from './schema';
 import type { OpeningDrill } from './openingDrills';
-import { fenAfterSans } from './openingDrills';
+import { fenAfterSans } from './drillLesson';
 import { START_FEN } from '../chess/pgn';
 import type { ChatMessage } from '../llm/client';
 import type { LlmPort } from '../store/session';

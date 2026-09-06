@@ -1978,3 +1978,415 @@ Expected: `graphify-out/` 更新，无报错（AST-only）。
 - **Spec 覆盖**：A → Task 3；B → Task 2；C → Task 4/5/6 + Task 2 的 flusher；D → Task 1；E → Task 8；F → Task 7；G → Task 9；H → Task 10。spec A 中的 `<link rel="preload">` 已从 spec 移除（Worker 内的 fetch 不消费文档级 preload，改由首页预热引擎达到同样效果）。
 - **类型一致性**：`evalAfterFromLines(analysis, userUci): number | null`（Task 7 定义，Task 8 使用，视角为走子后行棋方）；`Difficulty.moveTimeMs`（Task 7）；`useSession` / `useExplore` 签名沿用现有；`snapshotStorage.get<T>/set<T>/remove`（Task 10）。
 - **已知风险**：Task 5 / 6 涉及正在被其他 agent 修改的页面文件，实施者必须以当时的文件内容为准，只替换订阅方式与右栏组件，不动布局与文案。
+
+---
+
+## 追加任务（2026-09-06，用户要求）
+
+审查「按要求练习」（`src/lessons/customDrill.ts`，用户确认为有意加入的功能）的结论：JSON 抽取、着法合法性过滤、测试覆盖都可用。三个问题：① 所有开局练习（含自定义）的会话在「我的分析」里点开会跳到 `/lesson/drill/...` 而 `lessonById` 不认识 `drill/` 前缀，显示「找不到课程」；自定义练习即使路由修好也恢复不了，因为模型生成的 `opponentBook` 没有持久化。② `tabiyaFromBookLine` 在主变不足 2 步时回退到写死的 `['d4','d5']`，与用户要求无关。③ 模型常输出 `0-0` 记法，`sanitizeOpponentBook` 会把整条线丢掉。以下 Task 12 修这三项；Task 13 把 chess.js 挤出首页 chunk；Task 14 是 Task 10 的异步重设计。顺序：13 → 12 → 14。
+
+### Task 13: 把 chess.js 挤出首页 chunk
+
+**Files:**
+- Create: `src/lessons/drillLesson.ts`
+- Modify: `src/lessons/openingDrills.ts`、`src/lessons/customDrill.ts`、`src/pages/OpeningDrillPage.tsx`
+- Modify tests: `tests/openingDrills.test.ts`、`tests/session.test.ts`（仅 import 路径）
+
+**Interfaces:**
+- Produces: `src/lessons/drillLesson.ts` 导出 `fenAfterSans(startFen, sans): string`、`drillToLesson(drill, color, startMode?): Lesson`（函数体从 `openingDrills.ts` 原样搬过来），以及新增 `parseDrillLessonId(id: string): { drillId: string; color: Color; startMode: DrillStartMode } | null`（Task 12 使用）。`openingDrills.ts` 只剩类型、`OPENING_DRILLS` 数据、`openingDrillById`，不再 import `chess.js` 与 `../chess/pgn`。
+
+- [ ] **Step 1: 失败测试**
+
+新建 `tests/drillLesson.test.ts`：
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { drillToLesson, parseDrillLessonId } from '../src/lessons/drillLesson';
+import { openingDrillById } from '../src/lessons/openingDrills';
+
+describe('parseDrillLessonId', () => {
+  it('与 drillToLesson 生成的 id 往返一致', () => {
+    const drill = openingDrillById('london')!;
+    for (const color of ['w', 'b'] as const) {
+      for (const mode of ['from-start', 'tabiya'] as const) {
+        const lesson = drillToLesson(drill, color, mode);
+        expect(parseDrillLessonId(lesson.id)).toEqual({ drillId: 'london', color, startMode: mode });
+      }
+    }
+  });
+  it('非 drill id 返回 null', () => {
+    expect(parseDrillLessonId('opening/italian-game')).toBeNull();
+    expect(parseDrillLessonId('drill/x')).toBeNull();
+  });
+});
+```
+
+Run: `npx vitest run tests/drillLesson.test.ts` → FAIL（模块不存在）。
+
+- [ ] **Step 2: 实现**
+
+`src/lessons/drillLesson.ts`：把 `openingDrills.ts` 里的 `import { Chess } from 'chess.js'`、`import { START_FEN } from '../chess/pgn'`、`fenAfterSans`、`drillToLesson` 整体搬入（`OpeningDrill`、`DrillStartMode`、`Color`、`Lesson` 用 `import type`），并追加：
+
+```ts
+export function parseDrillLessonId(id: string): { drillId: string; color: Color; startMode: DrillStartMode } | null {
+  const m = /^drill\/(.+)\/(w|b)\/(start|tabiya)$/.exec(id);
+  if (!m) return null;
+  return { drillId: m[1], color: m[2] as Color, startMode: m[3] === 'start' ? 'from-start' : 'tabiya' };
+}
+```
+
+改 import：`customDrill.ts` 的 `fenAfterSans` 从 `./drillLesson`；`OpeningDrillPage.tsx` 的 `drillToLesson` 从 `../lessons/drillLesson`（`openingDrillById`、类型仍从 `openingDrills`）；`tests/openingDrills.test.ts` 与 `tests/session.test.ts` 的 `drillToLesson` / `fenAfterSans` 改从 `../src/lessons/drillLesson`。
+
+- [ ] **Step 3: 验证**
+
+`npm run typecheck && npm test` 全绿；`npm run build 2>&1 | grep "dist/assets/index-"` 主 chunk 应低于 250 kB（预期约 243 kB）。若仍高于 250 kB，在报告里列出首页 chunk 里剩余的大模块，不再继续拆。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/lessons/drillLesson.ts src/lessons/openingDrills.ts src/lessons/customDrill.ts src/pages/OpeningDrillPage.tsx tests/drillLesson.test.ts tests/openingDrills.test.ts tests/session.test.ts
+git commit -m "perf: 开局练习的 chess.js 逻辑拆到 drillLesson，首页 chunk 不再含 chess.js"
+```
+
+---
+
+### Task 12: 开局练习会话可从「我的分析」恢复；自定义练习持久化开局书；customDrill 小修
+
+**Files:**
+- Modify: `src/store/gameSessions.ts`（`SessionMeta.drill`、`newLesson` 第三参数）
+- Modify: `src/pages/AnalysesPage.tsx`（`openSession`）
+- Modify: `src/pages/OpeningDrillPage.tsx`（`?session=` 恢复）
+- Modify: `src/lessons/customDrill.ts`
+- Tests: `tests/gameSessions.test.ts`、`tests/customDrill.test.ts`
+
+**Interfaces:**
+- Consumes: Task 13 的 `parseDrillLessonId`、`drillToLesson`；`openingDrillById`；`bootLessonSession`；`openingOpponentById`。
+- Produces: `SessionMeta.drill?: OpeningDrill`（仅自定义练习写入）；`newLesson(lessonId: string, title: string, extra?: { drill?: OpeningDrill }): string`。
+
+- [ ] **Step 1: 失败测试**
+
+`tests/customDrill.test.ts` 追加：
+
+```ts
+  it('sanitizeOpponentBook 把 0-0 / 0-0-0 归一为 O-O / O-O-O', () => {
+    const book = sanitizeOpponentBook([['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', '0-0', 'Nf6', 'd3', '0-0']]);
+    expect(book[0][6]).toBe('O-O');
+    expect(book[0][9]).toBe('O-O');
+  });
+
+  it('tabiyaFromBookLine 主变不足 2 步时抛错，而不是回退到 d4 d5', () => {
+    expect(() => tabiyaFromBookLine(['e4'])).toThrow();
+  });
+```
+
+`tests/gameSessions.test.ts` 追加：
+
+```ts
+  it('newLesson 可附带自定义练习定义，保存在 meta 上', () => {
+    const drill = { id: 'custom', title: 'T', summary: '', theme: '', keyIdeas: [], principleIds: [], whiteTabiyaLine: ['e4', 'e5'], blackStartLine: ['e4'], opponentBook: [['e4', 'e5']], userPlies: 12 };
+    const id = useGameSessions.getState().newLesson('drill/custom/w/start', '自定义', { drill });
+    expect(useGameSessions.getState().metas[id].drill?.opponentBook).toEqual([['e4', 'e5']]);
+    const plain = useGameSessions.getState().newLesson('drill/london/w/start', '伦敦');
+    expect(useGameSessions.getState().metas[plain].drill).toBeUndefined();
+  });
+```
+
+Run 两个文件 → FAIL。
+
+- [ ] **Step 2: 实现**
+
+`customDrill.ts`：
+
+```ts
+function normalizeSan(s: string): string {
+  return s.trim().replace(/^0-0-0$/, 'O-O-O').replace(/^0-0$/, 'O-O');
+}
+```
+`sanitizeOpponentBook` 内 `line.map((s) => String(s).trim())` 改为 `line.map((s) => normalizeSan(String(s)))`。`tabiyaFromBookLine` 开头 `if (line.length < 2) throw new Error('开局书主变太短，请让模型给出至少两步');`，并删除 `: ['d4', 'd5']` 回退，直接 `whiteTabiyaLine: line.slice(0, whiteLen)`。
+
+`gameSessions.ts`：`SessionMeta` 加 `drill?: OpeningDrill;`（`import type { OpeningDrill } from '../lessons/openingDrills'`）；`newLesson(lessonId, title, extra?)` 构造 meta 时 `...(extra?.drill ? { drill: extra.drill } : {})`；接口签名同步。
+
+`OpeningDrillPage.tsx`：
+- `start()` 里 `gs.newLesson(lesson.id, sessionLabel(...))` 改为 `gs.newLesson(lesson.id, sessionLabel(...), isCustom ? { drill: ready } : undefined)`。
+- 新增 `?session=` 恢复：`const [searchParams, setSearchParams] = useSearchParams(); const sessionParam = searchParams.get('session');`，一个 `useEffect([sessionParam, rawId])`：
+
+```ts
+  useEffect(() => {
+    if (!sessionParam) return;
+    let cancelled = false;
+    (async () => {
+      const gs = useGameSessions.getState();
+      const meta = gs.metas[sessionParam];
+      const parsed = meta?.kind === 'lesson' && meta.lessonId ? parseDrillLessonId(meta.lessonId) : null;
+      if (!meta || !parsed || parsed.drillId !== rawId) { setStartError('该练习会话无法恢复'); return; }
+      const source = parsed.drillId === CUSTOM_DRILL_ID ? meta.drill : openingDrillById(parsed.drillId);
+      if (!source) { setStartError('该练习的开局书已丢失，无法恢复'); return; }
+      setBusy(true);
+      setStatus('正在恢复练习…');
+      try {
+        const lesson = drillToLesson(source, parsed.color, parsed.startMode);
+        const snap = gs.getLessonSnapshot(sessionParam);
+        const difficulty = openingOpponentById(snap?.difficultyId ?? oppId);
+        gs.setActiveLesson(sessionParam);
+        setColor(parsed.color);
+        setStartMode(parsed.startMode);
+        setOppId(difficulty.id);
+        setPlayDrill(source);
+        setExpectedLessonId(lesson.id);
+        const s = await bootLessonSession(lesson, difficulty);
+        if (cancelled) return;
+        setStore(s);
+        setPhase('play');
+        setSearchParams({}, { replace: true });
+      } catch (e) {
+        if (!cancelled) setStartError(String(e).replace(/^Error:\s*/, ''));
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sessionParam, rawId]);
+```
+把这个 effect 放在现有「rawId 变化时重置」的 effect 之后。`startError` 目前只在 `!isCustom` 分支显示，改为两种模式都显示。
+
+`AnalysesPage.tsx` 的 `openSession`：
+
+```ts
+    if (m.lessonId) {
+      const drill = parseDrillLessonId(m.lessonId);
+      if (drill) {
+        navigate(`/drill/${encodeURIComponent(drill.drillId)}?session=${encodeURIComponent(m.id)}`);
+        return;
+      }
+      navigate(`/lesson/${encodeURIComponent(m.lessonId)}?session=${encodeURIComponent(m.id)}`);
+    }
+```
+
+- [ ] **Step 3: 验证**
+
+`npm run typecheck && npm test` 全绿。手工：开始一个伦敦练习和一个自定义练习各走两步 → 首页「我的分析」→ 点开两者都恢复到原局面，对手继续按书行棋。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/store/gameSessions.ts src/pages/AnalysesPage.tsx src/pages/OpeningDrillPage.tsx src/lessons/customDrill.ts tests/gameSessions.test.ts tests/customDrill.test.ts
+git commit -m "fix: 开局练习会话可从我的分析恢复；自定义练习持久化开局书；SAN 0-0 归一"
+```
+
+---
+
+### Task 14: 会话快照按会话分文件存储（异步，基于平台适配器；取代 Task 10）
+
+**Files:**
+- Create: `src/store/snapshotStorage.ts`、`src/store/sessionSummary.ts`
+- Modify: `src/store/gameSessions.ts`、`src/store/sessionInstance.ts`、`src/store/exploreInstance.ts`、`src/pages/AnalysesPage.tsx`
+- Tests: `tests/snapshotStorage.test.ts`、`tests/gameSessions.test.ts`
+
+**Interfaces:**
+- Consumes: `createPlatformStorage('large')`（`StateStorage`，`getItem` 可能返回 Promise）。
+- Produces:
+
+```ts
+// src/store/snapshotStorage.ts
+export const SNAPSHOT_KEY_PREFIX = 'chess-trainer-session-';   // 文件名不能含冒号
+export interface SnapshotStorage {
+  peek<T>(id: string): T | null;              // 同步，只看内存缓存
+  load<T>(id: string): Promise<T | null>;     // 读穿：缓存没有则从 backend 读并缓存
+  set<T>(id: string, snap: T): void;          // 写缓存 + 异步写 backend，写入 Promise 被记录
+  remove(id: string): void;
+  flush(): Promise<void>;                     // 等待所有在途写入
+}
+export function createSnapshotStorage(backend: StateStorage): SnapshotStorage;
+export const snapshotStorage: SnapshotStorage;  // 默认 backend = createPlatformStorage('large')
+export function __setSnapshotStorageForTests(s: SnapshotStorage): void;
+
+// src/store/sessionSummary.ts（从 AnalysesPage 搬出）
+export function exploreSummary(snap: ExploreSnapshot | null | undefined): string;
+export function lessonSummary(snap: LessonSnapshot | null | undefined): string;
+
+// gameSessions
+SessionMeta.summary?: string;                          // 保存快照时计算
+loadSnapshot(id: string): Promise<void>;               // 新增 store 方法
+getExploreSnapshot / getLessonSnapshot → snapshotStorage.peek
+```
+
+- [ ] **Step 1: 失败测试**
+
+`tests/snapshotStorage.test.ts`：
+
+```ts
+import { describe, it, expect } from 'vitest';
+import type { StateStorage } from 'zustand/middleware';
+import { createSnapshotStorage, SNAPSHOT_KEY_PREFIX } from '../src/store/snapshotStorage';
+
+function asyncBackend() {
+  const m = new Map<string, string>();
+  let writes = 0;
+  const s: StateStorage & { m: Map<string, string>; writes(): number } = {
+    m,
+    writes: () => writes,
+    getItem: async (k) => m.get(k) ?? null,
+    setItem: async (k, v) => { await new Promise((r) => setTimeout(r, 5)); writes++; m.set(k, v); },
+    removeItem: async (k) => { m.delete(k); },
+  };
+  return s;
+}
+
+describe('snapshotStorage', () => {
+  it('set 立即可 peek，flush 后落到 backend，每个会话一个 key', async () => {
+    const b = asyncBackend();
+    const s = createSnapshotStorage(b);
+    s.set('a', { x: 1 });
+    s.set('b', { x: 2 });
+    expect(s.peek<{ x: number }>('a')).toEqual({ x: 1 });
+    expect(b.m.size).toBe(0);
+    await s.flush();
+    expect([...b.m.keys()].sort()).toEqual([`${SNAPSHOT_KEY_PREFIX}a`, `${SNAPSHOT_KEY_PREFIX}b`]);
+    const rawB = b.m.get(`${SNAPSHOT_KEY_PREFIX}b`);
+    s.set('a', { x: 3 });
+    await s.flush();
+    expect(b.m.get(`${SNAPSHOT_KEY_PREFIX}b`)).toBe(rawB);
+  });
+  it('load 读穿并缓存；缺失与坏 JSON 返回 null', async () => {
+    const b = asyncBackend();
+    b.m.set(`${SNAPSHOT_KEY_PREFIX}a`, '{"x":1}');
+    b.m.set(`${SNAPSHOT_KEY_PREFIX}bad`, '{nope');
+    const s = createSnapshotStorage(b);
+    expect(s.peek('a')).toBeNull();
+    expect(await s.load<{ x: number }>('a')).toEqual({ x: 1 });
+    expect(s.peek<{ x: number }>('a')).toEqual({ x: 1 });
+    expect(await s.load('missing')).toBeNull();
+    expect(await s.load('bad')).toBeNull();
+  });
+  it('remove 清缓存并删 backend', async () => {
+    const b = asyncBackend();
+    const s = createSnapshotStorage(b);
+    s.set('a', { x: 1 });
+    await s.flush();
+    s.remove('a');
+    await s.flush();
+    expect(s.peek('a')).toBeNull();
+    expect(b.m.has(`${SNAPSHOT_KEY_PREFIX}a`)).toBe(false);
+  });
+});
+```
+
+`tests/gameSessions.test.ts`：`beforeEach` 改为
+
+```ts
+import { createSnapshotStorage, __setSnapshotStorageForTests, SNAPSHOT_KEY_PREFIX } from '../src/store/snapshotStorage';
+import { migrateGameSessions } from '../src/store/gameSessions';
+// asyncBackend 同上（可放到 tests/helpers/asyncBackend.ts 共用）
+let backend: ReturnType<typeof asyncBackend>;
+beforeEach(() => {
+  backend = asyncBackend();
+  __setSnapshotStorageForTests(createSnapshotStorage(backend));
+  useGameSessions.setState({ metas: {}, activeExploreId: null, activeLessonId: null });
+});
+```
+原有用例里 `exploreData` / `lessonData` 的读取改用 `getExploreSnapshot` / `getLessonSnapshot`。追加：
+
+```ts
+  it('保存会话 A 不重写会话 B；meta.summary 随保存更新', async () => {
+    const gs = useGameSessions.getState();
+    const a = gs.newExplore('A'); const b = gs.newExplore('B');
+    const snap = { startFen: START_FEN, tree: createEmptyTree(), path: [], reviewDepth: null, orientation: 'white' as const, commentary: '', commentaryPly: null, followUps: {} };
+    gs.saveExploreSnapshot(b, snap);
+    await gs.flushPendingSave();
+    const rawB = backend.m.get(`${SNAPSHOT_KEY_PREFIX}${b}`);
+    gs.saveExploreSnapshot(a, snap);
+    await gs.flushPendingSave();
+    expect(backend.m.get(`${SNAPSHOT_KEY_PREFIX}${b}`)).toBe(rawB);
+    expect(useGameSessions.getState().metas[a].summary).toBe('起始局面');
+  });
+  it('deleteSession 删除快照 key', async () => { /* newExplore → save → flush → deleteSession → flush → backend.m.has(...) false */ });
+  it('migrate 把旧 exploreData / lessonData 搬进 snapshotStorage 并补 summary', async () => {
+    const migrated = migrateGameSessions({
+      metas: { e1: { id: 'e1', kind: 'explore', title: 'e', updatedAt: 'x' } },
+      exploreData: { e1: { startFen: START_FEN, tree: createEmptyTree(), path: [], reviewDepth: null, orientation: 'white', commentary: 'old', commentaryPly: null, followUps: {} } },
+      lessonData: {}, activeExploreId: 'e1', activeLessonId: null,
+    }, 0);
+    expect((migrated as { exploreData?: unknown }).exploreData).toBeUndefined();
+    expect(migrated.metas.e1.summary).toBe('起始局面');
+    expect(useGameSessions.getState().getExploreSnapshot('e1')?.commentary).toBe('old');
+    await useGameSessions.getState().flushPendingSave();
+    expect(backend.m.has(`${SNAPSHOT_KEY_PREFIX}e1`)).toBe(true);
+  });
+```
+
+- [ ] **Step 2: 实现 snapshotStorage**
+
+```ts
+import type { StateStorage } from 'zustand/middleware';
+import { createPlatformStorage } from '../platform/storage';
+
+export const SNAPSHOT_KEY_PREFIX = 'chess-trainer-session-';
+
+export interface SnapshotStorage { /* 见 Interfaces */ }
+
+export function createSnapshotStorage(backend: StateStorage): SnapshotStorage {
+  const cache = new Map<string, unknown>();
+  const pending = new Set<Promise<unknown>>();
+  const track = (p: Promise<unknown>) => {
+    const guarded = p.catch((e) => console.error('[snapshotStorage] 写入失败', e));
+    pending.add(guarded);
+    void guarded.finally(() => pending.delete(guarded));
+  };
+  return {
+    peek<T>(id: string) { return (cache.get(id) as T) ?? null; },
+    async load<T>(id: string) {
+      if (cache.has(id)) return cache.get(id) as T;
+      const raw = await backend.getItem(SNAPSHOT_KEY_PREFIX + id);
+      if (raw === null || raw === undefined) return null;
+      try { const v = JSON.parse(raw) as T; cache.set(id, v); return v; } catch { return null; }
+    },
+    set<T>(id: string, snap: T) {
+      cache.set(id, snap);
+      track(Promise.resolve(backend.setItem(SNAPSHOT_KEY_PREFIX + id, JSON.stringify(snap))));
+    },
+    remove(id: string) {
+      cache.delete(id);
+      track(Promise.resolve(backend.removeItem(SNAPSHOT_KEY_PREFIX + id)));
+    },
+    async flush() { while (pending.size > 0) await Promise.all([...pending]); },
+  };
+}
+
+let current: SnapshotStorage = createSnapshotStorage(createPlatformStorage('large'));
+export const snapshotStorage: SnapshotStorage = {
+  peek: (id) => current.peek(id), load: (id) => current.load(id), set: (id, s) => current.set(id, s),
+  remove: (id) => current.remove(id), flush: () => current.flush(),
+};
+export function __setSnapshotStorageForTests(s: SnapshotStorage) { current = s; }
+```
+
+- [ ] **Step 3: 改 gameSessions**
+
+- 删除 state 里的 `exploreData` / `lessonData`；`SessionMeta` 加 `summary?: string`。
+- `saveExploreSnapshot(id, snap, title)`：`snapshotStorage.set(id, snap)`，meta 更新 `title`、`updatedAt`、`summary: exploreSummary(snap)`。`saveLessonSnapshot` 同理用 `lessonSummary`。
+- `saveAsExplore/saveAsLesson`：数据来自 `snapshotStorage.peek(fromId)`，为 null 则返回 null（fromId 是活动会话，一定已加载）。
+- `deleteSession`：`snapshotStorage.remove(id)`。
+- `getExploreSnapshot/getLessonSnapshot`：`snapshotStorage.peek`。
+- 新方法 `async loadSnapshot(id) { await snapshotStorage.load(id); }`。
+- `flushPendingSave`：`await Promise.all([gameSessionStorage.flush(), snapshotStorage.flush()])`（模块级函数与 store 方法都改）。
+- `export function migrateGameSessions(persisted: unknown, version: number)`：`version < 1` 时把 `exploreData` / `lessonData` 逐条 `snapshotStorage.set`，并给对应 meta 填 `summary`；返回 `{ metas, activeExploreId, activeLessonId }`。
+- persist 配置：`version: 1`、`partialize: (s) => ({ metas: s.metas, activeExploreId: s.activeExploreId, activeLessonId: s.activeLessonId })`、`migrate: (p, v) => migrateGameSessions(p, v) as unknown as GameSessionsState`。
+
+- [ ] **Step 4: 改调用方**
+
+- `sessionInstance.ts` `bootLessonSession` / `switchLessonSession`：读 `getLessonSnapshot(id)` 之前 `await gs.loadSnapshot(id)`。
+- `exploreInstance.ts` `getExploreStore` / `switchExploreSession`：同样先 `await gs.loadSnapshot(id)`；`attachExploreAutosave` 的比较改为 `JSON.stringify(gs.getExploreSnapshot(id)) === json`。
+- `AnalysesPage.tsx`：删除 `exploreData` / `lessonData` 订阅与本地 `exploreSummary` / `lessonSummary`，列表显示 `m.summary ?? (m.kind === 'explore' ? '空分析' : '课程练习')`。
+- Task 12 的 `OpeningDrillPage` 恢复流程：读 `getLessonSnapshot(sessionParam)` 之前 `await gs.loadSnapshot(sessionParam)`。
+- 全局 `grep -rn "exploreData\|lessonData" src tests` 清零。
+
+- [ ] **Step 5: 验证**
+
+`npm run typecheck && npm test` 全绿。手工：用上一版构建创建 2 个探索、1 个课程、1 个开局练习会话 → 切到新构建刷新 → 列表摘要、内容、恢复都正常；Application → Local Storage 出现 `chess-trainer-session-<id>` 条目，`chess-trainer-game-sessions` 只剩 metas；走几步只更新当前会话的 key。
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/store/snapshotStorage.ts src/store/sessionSummary.ts src/store/gameSessions.ts src/store/sessionInstance.ts src/store/exploreInstance.ts src/pages/AnalysesPage.tsx src/pages/OpeningDrillPage.tsx tests/snapshotStorage.test.ts tests/gameSessions.test.ts tests/helpers/asyncBackend.ts
+git commit -m "perf: 会话快照按会话分文件异步存储（平台适配器），meta 内置摘要"
+```

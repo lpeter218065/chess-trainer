@@ -14,6 +14,7 @@ import { createStreamFlusher } from '../utils/streamFlusher';
 import { createDebouncer, LLM_DEBOUNCE_MS } from '../utils/debounce';
 import { classifyMove, scoreToCp, type Quality } from '../chess/quality';
 import { fenAfterPlies, sideToMove, toPerspective, uciToSan, uciToSquares } from '../chess/notation';
+import { evalAfterFromLines } from '../chess/evalFromLines';
 import { annotationsAfterMove, type BoardAnnotations } from '../chess/annotations';
 import { isFinished, judgeResult, type GameResult, type Outcome } from '../chess/result';
 import { extractFeatures } from '../chess/features';
@@ -339,11 +340,14 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
         const afterUserOver = chess.isGameOver();
         if (!afterUserOver) {
           try {
-            const [analysisAfter, em] = await Promise.all([
-              deps.engine.analyze(fenAfterUser, 1),
+            const knownCp = analysisBefore ? evalAfterFromLines(analysisBefore, userUci) : null;
+            const [evalAfterCp, em] = await Promise.all([
+              knownCp !== null
+                ? Promise.resolve(toPerspective(knownCp, sideToMove(fenAfterUser), lesson.playerColor))
+                : deps.engine.analyze(fenAfterUser, 1).then((a) => playerCp(a, lesson)),
               applyOpponentMove(chess, s.difficulty!),
             ]);
-            evalAfter = playerCp(analysisAfter, lesson);
+            evalAfter = evalAfterCp;
             engineMove = { san: em.san, uci: em.from + em.to + (em.promotion ?? '') };
           } catch (e) {
             set({ engineError: `引擎出错：${(e as Error).message}`, phase: 'userTurn', liveAnnotations: null });

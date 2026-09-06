@@ -1,5 +1,5 @@
 import { StockfishEngine, type Analysis } from './stockfishWorker';
-import { ANALYSIS_DEPTH, type Difficulty } from './difficulty';
+import { ANALYSIS_DEPTH, ANALYSIS_MOVETIME_MS, type Difficulty } from './difficulty';
 
 export type { Analysis };
 
@@ -17,13 +17,13 @@ export async function createEngineService(workerUrl: string): Promise<EnginePort
   await analyst.setOptions({ 'Skill Level': 20, MultiPV: 3 });
   let lastSkill = -1;
   return {
-    analyze: (fen, multiPv) => analyst.analyze(fen, ANALYSIS_DEPTH, multiPv),
+    analyze: (fen, multiPv) => analyst.analyze(fen, ANALYSIS_DEPTH, multiPv, ANALYSIS_MOVETIME_MS),
     async opponentMove(fen, difficulty) {
       if (difficulty.skillLevel !== lastSkill) {
         await opponent.setOptions({ 'Skill Level': difficulty.skillLevel });
         lastSkill = difficulty.skillLevel;
       }
-      return opponent.bestMove(fen, difficulty.depth);
+      return opponent.bestMove(fen, difficulty.depth, difficulty.moveTimeMs);
     },
     dispose() {
       analyst.terminate();

@@ -58,9 +58,10 @@ export class StockfishEngine {
     await this.run(['ucinewgame', 'isready'], false);
   }
 
-  async analyze(fen: string, depth: number, multiPv: number): Promise<Analysis> {
+  async analyze(fen: string, depth: number, multiPv: number, moveTimeMs?: number): Promise<Analysis> {
     await this.setOptions({ MultiPV: multiPv });
-    const lines = await this.run([`position fen ${fen}`, `go depth ${depth}`], true);
+    const go = moveTimeMs ? `go depth ${depth} movetime ${moveTimeMs}` : `go depth ${depth}`;
+    const lines = await this.run([`position fen ${fen}`, go], true);
     const byPv = new Map<number, InfoLine>();
     for (const l of lines) {
       const info = parseInfoLine(l);
@@ -71,8 +72,9 @@ export class StockfishEngine {
     return { fen, lines: [...byPv.values()].sort((a, b) => a.multipv - b.multipv), bestMove };
   }
 
-  async bestMove(fen: string, depth: number): Promise<string> {
-    const lines = await this.run([`position fen ${fen}`, `go depth ${depth}`], true);
+  async bestMove(fen: string, depth: number, moveTimeMs?: number): Promise<string> {
+    const go = moveTimeMs ? `go depth ${depth} movetime ${moveTimeMs}` : `go depth ${depth}`;
+    const lines = await this.run([`position fen ${fen}`, go], true);
     const bm = lines.map(parseBestMove).find((m): m is string => m !== null);
     if (!bm) throw new Error('引擎没有返回 bestmove');
     return bm;

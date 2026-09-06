@@ -80,17 +80,33 @@ function FooterSlot({ children, compact }: { children: ReactNode; compact: boole
   );
 }
 
-function boardWrapStyle(klass: ViewportClass, width: number, height: number, hasLeft: boolean): CSSProperties | undefined {
+export function boardSidePx(
+  klass: ViewportClass,
+  width: number,
+  height: number,
+  hasLeft: boolean,
+  reservedBelowPx: number,
+): number {
   if (klass === 'compact') {
-    const availableHeight = Math.max(240, height - 72);
-    const side = Math.max(160, Math.min(width, availableHeight - 240));
-    return { width: side, maxWidth: '100%', marginInline: 'auto' };
+    if (hasLeft) return 0;
+    return Math.max(200, Math.min(width, height - reservedBelowPx));
   }
   if (klass === 'medium' && !hasLeft) {
-    const side = Math.min(width * 0.6, height * 0.55);
-    return { width: side, maxWidth: '100%', marginInline: 'auto' };
+    return Math.min(width * 0.6, height * 0.55);
   }
-  return undefined;
+  return 0;
+}
+
+function boardWrapStyle(
+  klass: ViewportClass,
+  width: number,
+  height: number,
+  hasLeft: boolean,
+  reservedBelowPx: number,
+): CSSProperties | undefined {
+  const side = boardSidePx(klass, width, height, hasLeft, reservedBelowPx);
+  if (side <= 0) return undefined;
+  return { width: side, maxWidth: '100%', marginInline: 'auto' };
 }
 
 export function TrainerLayout({
@@ -127,7 +143,8 @@ export function TrainerLayout({
   };
 
   const active = tabs.find((t) => t.id === segment) ?? tabs[0];
-  const boardStyle = boardWrapStyle(klass, width, height, hasLeft);
+  const reservedBelowPx = klass === 'compact' ? 210 : 0;
+  const boardStyle = boardWrapStyle(klass, width, height, hasLeft, reservedBelowPx);
   const footerVisible = Boolean(footer) && (klass === 'wide' || !footerPanelId || active?.id === footerPanelId);
 
   const shell: CSSProperties = {
@@ -195,7 +212,7 @@ export function TrainerLayout({
 
       {klass === 'compact' && (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 flex-[1.2] flex-col overflow-hidden" style={boardStyle}>{board}</div>
+          <div className="flex min-h-0 flex-[1.6] flex-col overflow-hidden" style={boardStyle}>{board}</div>
           <div className="panel mt-2 flex min-h-[10rem] flex-1 flex-col overflow-hidden">
             <Segmented tabs={tabs} active={active?.id ?? ''} onSelect={selectSegment} />
             <div className="min-h-0 flex-1 overflow-y-auto p-3">{active?.content}</div>

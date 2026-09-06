@@ -1,23 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { StoreApi } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { lessonById } from '../lessons';
 import { bootLessonSession, newLessonSession, switchLessonSession, useSession } from '../store/sessionInstance';
-import type { SessionState } from '../store/session';
+import type { Phase, Round, SessionState } from '../store/session';
+import type { Lesson } from '../lessons/schema';
 import { useSettings } from '../store/settings';
 import { useGameSessions } from '../store/gameSessions';
 import { DIFFICULTIES, difficultyById, type DifficultyId } from '../engine/difficulty';
 import { Board } from '../components/Board';
 import { EvalBar } from '../components/EvalBar';
-import { CommentaryPanel } from '../components/CommentaryPanel';
 import { MoveList } from '../components/MoveList';
-import { HintButton } from '../components/HintButton';
-import { SummaryCard } from '../components/SummaryCard';
 import { SessionBar } from '../components/SessionBar';
 import { fenAfterPlies, formatEval, navigatePly, sideToMove, sanToUci, uciToSan, type PlyNav } from '../chess/notation';
-import { annotationsFromAnalysis, annotationsFromFocus, mergeAnnotations, roundIndexForPly } from '../chess/annotations';
+import { annotationsFromAnalysis, annotationsFromFocus, mergeAnnotations, roundIndexForPly, type BoardAnnotations } from '../chess/annotations';
 import { AnnotationLegend } from '../components/AnnotationLegend';
-import { AssessmentPanel } from '../components/AssessmentPanel';
 import { focusFromText } from '../chess/commentaryMarkers';
 import { EngineLinesPanel, type PvLineData } from '../components/EngineLinesPanel';
 import type { CommentaryFocus } from '../chess/commentaryMarkers';
@@ -26,7 +24,11 @@ import type { Analysis } from '../engine/engineService';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { BoardToolbar, ToolToggle } from '../components/BoardToolbar';
 import { TrainerLayout } from '../components/layout/TrainerLayout';
-import { FollowUpComposer } from '../components/FollowUpChat';
+import { LessonCommentary } from '../components/lesson/LessonCommentary';
+import { LessonHint } from '../components/lesson/LessonHint';
+import { LessonSummary } from '../components/lesson/LessonSummary';
+import { LessonAssessment } from '../components/lesson/LessonAssessment';
+import { LessonFollowUpComposer } from '../components/lesson/LessonFollowUpComposer';
 import { lessonFollowUpThreadId } from '../llm/prompts';
 import { useHasHover } from '../platform';
 import type { CommentaryFocusMode } from '../components/AnnotatedCommentary';
@@ -104,28 +106,35 @@ function keyToNav(key: string): PlyNav | null {
   return null;
 }
 
-function resolveBoardAnnotations(s: SessionState, ply: number, livePly: number, viewedFen: string) {
+interface AnnotationSources {
+  roundAnnotations: BoardAnnotations[];
+  analysisBefore: Analysis | null;
+  liveAnnotations: BoardAnnotations | null;
+  phase: Phase;
+  commentaryStreaming: boolean;
+}
+
+function resolveBoardAnnotations(src: AnnotationSources, ply: number, livePly: number, viewedFen: string): BoardAnnotations | null {
   const roundIdx = roundIndexForPly(ply);
-  const viewingRound = roundIdx >= 0 && roundIdx < s.rounds.length ? s.rounds[roundIdx] : null;
+  const viewingRound = roundIdx >= 0 && roundIdx < src.roundAnnotations.length ? src.roundAnnotations[roundIdx] : null;
+  const fromAnalysis = src.analysisBefore?.fen === viewedFen ? annotationsFromAnalysis(src.analysisBefore) : null;
 
   if (ply < livePly) {
-    if (viewingRound) return viewingRound.annotations;
-    if (ply === 0 && s.analysisBefore?.fen === viewedFen) return annotationsFromAnalysis(s.analysisBefore);
+    if (viewingRound) return viewingRound;
+    if (ply === 0 && fromAnalysis) return fromAnalysis;
     return null;
   }
 
-  if (s.liveAnnotations) return s.liveAnnotations;
+  if (src.liveAnnotations) return src.liveAnnotations;
 
-  if (viewingRound && (s.phase === 'engineThinking' || s.phase === 'preparing' || s.streaming === 'commentary')) {
-    return viewingRound.annotations;
+  if (viewingRound && (src.phase === 'engineThinking' || src.phase === 'preparing' || src.commentaryStreaming)) {
+    return viewingRound;
   }
 
-  if (s.phase === 'userTurn' && s.analysisBefore?.fen === viewedFen) {
-    return annotationsFromAnalysis(s.analysisBefore);
-  }
+  if (src.phase === 'userTurn' && fromAnalysis) return fromAnalysis;
 
-  if (viewingRound) return viewingRound.annotations;
-  if (ply === 0 && s.analysisBefore?.fen === viewedFen) return annotationsFromAnalysis(s.analysisBefore);
+  if (viewingRound) return viewingRound;
+  if (ply === 0 && fromAnalysis) return fromAnalysis;
   return null;
 }
 
@@ -142,28 +151,37 @@ function linesFromAnalysis(analysis: Analysis): PvLineData[] {
   });
 }
 
+interface EngineLineSources {
+  analysisBefore: Analysis | null;
+  lesson: Lesson | null;
+  history: string[];
+  roundEngineMoves: Round['engineMove'][];
+  roundBestLinesSan: string[][][];
+  roundBestLinesUci: (string[][] | null)[];
+}
+
 /** 当前复盘局面可用的候选招法：优先 live 分析，否则取「走子前」存在该局面上的回合 PV */
-function resolveEngineLines(s: SessionState, viewedFen: string): { baseFen: string; lines: PvLineData[] } | null {
-  if (s.analysisBefore?.fen === viewedFen) {
-    return { baseFen: viewedFen, lines: linesFromAnalysis(s.analysisBefore) };
+function resolveEngineLines(src: EngineLineSources, viewedFen: string): { baseFen: string; lines: PvLineData[] } | null {
+  if (src.analysisBefore?.fen === viewedFen) {
+    return { baseFen: viewedFen, lines: linesFromAnalysis(src.analysisBefore) };
   }
-  if (!s.lesson) return null;
+  if (!src.lesson) return null;
   let cursor = 0;
-  for (const r of s.rounds) {
-    const fenAt = fenAfterPlies(s.lesson.startFen, s.history, cursor).fen;
+  for (let i = 0; i < src.roundEngineMoves.length; i++) {
+    const fenAt = fenAfterPlies(src.lesson.startFen, src.history, cursor).fen;
     if (fenAt === viewedFen) {
-      const lines: PvLineData[] = r.bestLinesSan.slice(0, 3).map((moves, i) => {
-        const stored = r.bestLinesUci?.[i];
+      const lines: PvLineData[] = src.roundBestLinesSan[i].slice(0, 3).map((moves, j) => {
+        const stored = src.roundBestLinesUci[i]?.[j];
         const uci = stored && stored.length > 0 ? stored : sanToUci(viewedFen, moves);
         return {
-          label: `PV${i + 1}`,
+          label: `PV${j + 1}`,
           uci,
           moves: moves.length > 0 ? moves : uciToSan(viewedFen, uci),
         };
       });
       return lines.length > 0 ? { baseFen: viewedFen, lines } : null;
     }
-    cursor += 1 + (r.engineMove ? 1 : 0);
+    cursor += 1 + (src.roundEngineMoves[i] ? 1 : 0);
   }
   return null;
 }
@@ -188,8 +206,32 @@ export function LessonView({
   difficultyOptions?: typeof DIFFICULTIES;
   difficultyLabel?: string;
 }) {
-  const s = useSession(store, (x) => x);
-  const livePly = s.history.length;
+  // 细粒度订阅：流式文本（intro / commentary / hint / summary / followUp）都由自订阅组件消费，
+  // 页面只订阅结构性字段，讲解流式刷新时不重渲染棋盘与走子列表。
+  const sessionLesson = useSession(store, (x) => x.lesson);
+  const phase = useSession(store, (x) => x.phase);
+  const history = useSession(store, (x) => x.history);
+  const analysisBefore = useSession(store, (x) => x.analysisBefore);
+  const liveAnnotations = useSession(store, (x) => x.liveAnnotations);
+  const hintArrow = useSession(store, (x) => x.hintArrow);
+  const evalCp = useSession(store, (x) => x.evalCp);
+  const engineError = useSession(store, (x) => x.engineError);
+  const followUpStreaming = useSession(store, (x) => x.followUpStreaming);
+  const commentaryStreaming = useSession(store, (x) => x.streaming === 'commentary');
+  const introStreaming = useSession(store, (x) => x.streaming === 'intro');
+  const hasIntro = useSession(store, (x) => x.intro.length > 0);
+  const hasResult = useSession(store, (x) => x.result !== null);
+  // 棋盘标记需要局面判断的文本；局面判断是低频操作，接受它触发页面重渲染
+  const assessmentText = useSession(store, (x) => x.assessment);
+  const assessmentFen = useSession(store, (x) => x.assessmentFen);
+  const roundsCount = useSession(store, (x) => x.rounds.length);
+  // 从 rounds 派生、引用稳定的数组：commentary 流式写入只替换被写的 round 对象，其余字段引用不变
+  const roundAnnotations = useSession(store, useShallow((x) => x.rounds.map((r) => r.annotations)));
+  const roundEngineMoves = useSession(store, useShallow((x) => x.rounds.map((r) => r.engineMove)));
+  const roundBestLinesSan = useSession(store, useShallow((x) => x.rounds.map((r) => r.bestLinesSan)));
+  const roundBestLinesUci = useSession(store, useShallow((x) => x.rounds.map((r) => r.bestLinesUci ?? null)));
+
+  const livePly = history.length;
   const [reviewPly, setReviewPly] = useState<number | null>(null);
   const [showAnnotations, setShowAnnotations] = useState(false);
   const [showCandidates, setShowCandidates] = useState(false);
@@ -198,19 +240,25 @@ export function LessonView({
   const focusMode: CommentaryFocusMode = useHasHover() ? 'hover' : 'tap';
   const ply = reviewPly === null ? livePly : Math.min(reviewPly, livePly);
   const isLive = reviewPly === null || reviewPly >= livePly;
+  const activeRoundIndex = roundIndexForPly(ply);
+  // 只订阅「有没有讲解」而不是讲解文本，流式追加不会让页面重渲染
+  const hasActiveRoundCommentary = useSession(
+    store,
+    (x) => activeRoundIndex >= 0 && (x.rounds[activeRoundIndex]?.commentary.length ?? 0) > 0,
+  );
 
   const viewed = useMemo(
-    () => (s.lesson ? fenAfterPlies(s.lesson.startFen, s.history, ply) : { fen: '', lastMove: null }),
-    [s.lesson, s.history, ply],
+    () => (sessionLesson ? fenAfterPlies(sessionLesson.startFen, history, ply) : { fen: '', lastMove: null }),
+    [sessionLesson, history, ply],
   );
 
   // 轮到学员即可走：退一步后分析在后台，不必等 userTurn
   const canPlayHere =
-    !!s.lesson &&
+    !!sessionLesson &&
     !!viewed.fen &&
-    sideToMove(viewed.fen) === s.lesson.playerColor &&
-    s.phase !== 'engineThinking' &&
-    !s.followUpStreaming;
+    sideToMove(viewed.fen) === sessionLesson.playerColor &&
+    phase !== 'engineThinking' &&
+    !followUpStreaming;
 
   useEffect(() => {
     setReviewPly(null);
@@ -219,7 +267,7 @@ export function LessonView({
   useEffect(() => {
     setShowAnnotations(false);
     setHoverFocus(null);
-  }, [ply, livePly, s.rounds.length]);
+  }, [ply, livePly, roundsCount]);
 
   useEffect(() => {
     if (!showAssessment || !viewed.fen) return;
@@ -249,43 +297,48 @@ export function LessonView({
   }, [livePly, store]);
 
   const boardAnnotations = useMemo(
-    () => resolveBoardAnnotations(s, ply, livePly, viewed.fen),
-    [s, ply, livePly, viewed.fen],
+    () => resolveBoardAnnotations({ roundAnnotations, analysisBefore, liveAnnotations, phase, commentaryStreaming }, ply, livePly, viewed.fen),
+    [roundAnnotations, analysisBefore, liveAnnotations, phase, commentaryStreaming, ply, livePly, viewed.fen],
   );
 
   const assessmentMarks = useMemo(() => {
-    if (!showAssessment || !s.assessment || s.assessmentFen !== viewed.fen) return null;
-    return annotationsFromFocus(focusFromText(s.assessment));
-  }, [showAssessment, s.assessment, s.assessmentFen, viewed.fen]);
+    if (!showAssessment || !assessmentText || assessmentFen !== viewed.fen) return null;
+    return annotationsFromFocus(focusFromText(assessmentText));
+  }, [showAssessment, assessmentText, assessmentFen, viewed.fen]);
 
-  const visibleAnnotations = mergeAnnotations(
-    showAnnotations ? boardAnnotations : null,
-    assessmentMarks,
+  // 关掉「显示分析」时固定传 null，避免 boardAnnotations 变化打断棋盘 memo
+  const shownAnnotations = showAnnotations ? boardAnnotations : null;
+  const visibleAnnotations = useMemo(
+    () => mergeAnnotations(shownAnnotations, assessmentMarks),
+    [shownAnnotations, assessmentMarks],
   );
 
-  const activeRoundIndex = roundIndexForPly(ply);
   const plyAfterRounds = useMemo(() => {
     const ends: number[] = [];
     let cursor = 0;
-    for (const r of s.rounds) {
-      cursor += 1 + (r.engineMove ? 1 : 0);
+    for (const em of roundEngineMoves) {
+      cursor += 1 + (em ? 1 : 0);
       ends.push(cursor);
     }
     return ends;
-  }, [s.rounds]);
+  }, [roundEngineMoves]);
 
   const enginePv = useMemo(
-    () => (viewed.fen ? resolveEngineLines(s, viewed.fen) : null),
-    [s, viewed.fen],
+    () => (viewed.fen
+      ? resolveEngineLines({ analysisBefore, lesson: sessionLesson, history, roundEngineMoves, roundBestLinesSan, roundBestLinesUci }, viewed.fen)
+      : null),
+    [analysisBefore, sessionLesson, history, roundEngineMoves, roundBestLinesSan, roundBestLinesUci, viewed.fen],
   );
 
+  const historyUpToPly = useMemo(() => history.slice(0, ply), [history, ply]);
+
   const canTakeback =
-    !!s.lesson &&
-    (s.phase === 'userTurn' || s.phase === 'finished') &&
-    !s.followUpStreaming &&
+    !!sessionLesson &&
+    (phase === 'userTurn' || phase === 'finished') &&
+    !followUpStreaming &&
     (() => {
       for (let p = ply - 1; p >= 0; p--) {
-        if (sideToMove(fenAfterPlies(s.lesson!.startFen, s.history, p).fen) === s.lesson!.playerColor) return true;
+        if (sideToMove(fenAfterPlies(sessionLesson.startFen, history, p).fen) === sessionLesson.playerColor) return true;
       }
       return false;
     })();
@@ -303,7 +356,7 @@ export function LessonView({
     if (ok) setReviewPly(null);
   };
 
-  const onBoardMove = async (from: string, to: string, promotion?: string) => {
+  const onBoardMove = useCallback(async (from: string, to: string, promotion?: string) => {
     if (!canPlayHere) return false;
     if (!isLive) {
       const ok = await store.getState().rewindToPly(ply);
@@ -311,25 +364,37 @@ export function LessonView({
       if (!ok) return false;
     }
     return store.getState().playUserMove(from, to, promotion);
-  };
+  }, [store, canPlayHere, isLive, ply]);
+
+  const onBackgroundTap = useCallback(() => setHoverFocus(null), []);
+  const onSelectPly = useCallback((p: number) => setReviewPly(p >= livePly ? null : p), [livePly]);
+  const onSelectRound = useCallback((index: number) => {
+    if (index < 0) {
+      setReviewPly(livePly === 0 ? null : 0);
+      return;
+    }
+    const end = plyAfterRounds[index];
+    if (end == null) return;
+    setReviewPly(end >= livePly ? null : end);
+  }, [livePly, plyAfterRounds]);
 
   // start() 在父组件 useEffect 里调用，首次渲染时 session.lesson 仍是 null
-  if (!s.lesson || s.lesson.id !== expectedLessonId) {
+  if (!sessionLesson || sessionLesson.id !== expectedLessonId) {
     return <LoadingScreen message="正在准备课程…" />;
   }
-  const currentLesson = s.lesson;
+  const currentLesson = sessionLesson;
   const orientation = currentLesson.playerColor === 'w' ? 'white' : 'black';
   const startMoveNumber = Number(currentLesson.startFen.split(' ')[5] ?? '1');
-  const analyzing = s.phase === 'preparing' || s.phase === 'engineThinking';
+  const analyzing = phase === 'preparing' || phase === 'engineThinking';
   const introThread = lessonFollowUpThreadId('intro');
   const showingIntro = activeRoundIndex < 0;
-  const activeRound = activeRoundIndex >= 0 ? s.rounds[activeRoundIndex] : undefined;
-  const streamingThisRound = !!activeRound && s.streaming === 'commentary' && activeRound.index === s.rounds.length - 1;
-  const showIntroFollowUp = showingIntro && s.intro.length > 0 && s.streaming !== 'intro';
-  const showRoundFollowUp = !!activeRound && activeRound.commentary.length > 0 && !streamingThisRound;
-  const composerThread = showingIntro ? introThread : (activeRound ? lessonFollowUpThreadId('round', activeRound.index) : null);
+  const hasActiveRound = activeRoundIndex >= 0 && activeRoundIndex < roundsCount;
+  const streamingThisRound = hasActiveRound && commentaryStreaming && activeRoundIndex === roundsCount - 1;
+  const showIntroFollowUp = showingIntro && hasIntro && !introStreaming;
+  const showRoundFollowUp = hasActiveRound && hasActiveRoundCommentary && !streamingThisRound;
+  const composerThread = showingIntro ? introThread : (hasActiveRound ? lessonFollowUpThreadId('round', activeRoundIndex) : null);
   const showComposer = Boolean((showIntroFollowUp || showRoundFollowUp) && composerThread);
-  const focusProps = { focusMode, activeFocus: hoverFocus };
+  const boardHintArrow = isLive && phase === 'userTurn' ? hintArrow : null;
 
   const leftPanel = showCandidates ? (
     enginePv && enginePv.lines.length > 0 ? (
@@ -380,21 +445,21 @@ export function LessonView({
                 orientation={orientation}
                 interactive={canPlayHere}
                 annotations={visibleAnnotations}
-                hintArrow={isLive && s.phase === 'userTurn' ? s.hintArrow : null}
+                hintArrow={boardHintArrow}
                 hoverFocus={hoverFocus}
                 lastMove={viewed.lastMove}
                 onMove={onBoardMove}
-                onBackgroundTap={() => setHoverFocus(null)}
+                onBackgroundTap={onBackgroundTap}
               />
           </div>
           <div className="flex min-h-0 flex-col gap-1.5">
           {(showAnnotations || (assessmentMarks && (assessmentMarks.arrows.length > 0 || assessmentMarks.squares.length > 0))) && (
             <div className="shrink-0">
-              <AnnotationLegend annotations={visibleAnnotations} showHint={isLive && s.phase === 'userTurn' && !!s.hintArrow} />
+              <AnnotationLegend annotations={visibleAnnotations} showHint={isLive && phase === 'userTurn' && !!hintArrow} />
             </div>
           )}
           <div className="shrink-0">
-            <EvalBar cp={s.evalCp} playerIsWhite={currentLesson.playerColor === 'w'} />
+            <EvalBar cp={evalCp} playerIsWhite={currentLesson.playerColor === 'w'} />
           </div>
           <BoardToolbar>
             <ToolToggle
@@ -417,20 +482,20 @@ export function LessonView({
             <span className="min-w-0 truncate text-xs text-muted">
               {!isLive && canPlayHere && '回看中 · 点子或拖子改走（之后着法将丢弃）'}
               {!isLive && !canPlayHere && '回看中 · 轮到对方'}
-              {isLive && s.phase === 'preparing' && '引擎分析中…可继续走'}
-              {isLive && s.phase === 'engineThinking' && '引擎思考中…'}
-              {isLive && s.phase === 'userTurn' && '轮到你走 · 点子或拖子'}
-              {isLive && s.phase === 'finished' && '训练结束'}
-              {s.engineError && <span className="ml-2 text-danger" role="alert">{s.engineError}</span>}
+              {isLive && phase === 'preparing' && '引擎分析中…可继续走'}
+              {isLive && phase === 'engineThinking' && '引擎思考中…'}
+              {isLive && phase === 'userTurn' && '轮到你走 · 点子或拖子'}
+              {isLive && phase === 'finished' && '训练结束'}
+              {engineError && <span className="ml-2 text-danger" role="alert">{engineError}</span>}
             </span>
           </BoardToolbar>
           <div className="max-h-28 min-h-16 shrink-0 overflow-y-auto">
             <MoveList
-              history={s.history}
+              history={history}
               startMoveNumber={startMoveNumber}
               blackFirst={sideToMove(currentLesson.startFen) === 'b'}
               selectedPly={ply}
-              onSelectPly={(p) => setReviewPly(p >= livePly ? null : p)}
+              onSelectPly={onSelectPly}
             />
           </div>
           </div>
@@ -447,56 +512,40 @@ export function LessonView({
                 <h2 className="text-sm font-semibold text-ink">{currentLesson.title}</h2>
                 <p className="text-xs text-muted">{currentLesson.theme}</p>
               </div>
-              {s.phase !== 'finished' && (
+              {phase !== 'finished' && (
                 <div className="shrink-0 border-b border-line px-3 py-2">
-                  <HintButton disabled={!isLive || s.phase !== 'userTurn'} hintText={s.hintText} streaming={s.streaming === 'hint'} onHint={(lv) => void s.requestHint(lv)} />
+                  <LessonHint store={store} disabled={!isLive || phase !== 'userTurn'} />
                 </div>
               )}
-              {s.phase === 'finished' && s.result && (
+              {phase === 'finished' && hasResult && (
                 <div className="shrink-0 border-b border-line px-3 py-2">
-                  <SummaryCard outcome={s.result.outcome} reason={s.result.reason} summary={s.summary} streaming={s.streaming === 'summary'} onRestart={() => void newLessonSession(lesson, difficultyById(difficultyId))} onBack={onBack} />
+                  <LessonSummary
+                    store={store}
+                    onRestart={() => void newLessonSession(lesson, difficultyById(difficultyId))}
+                    onBack={onBack}
+                  />
                 </div>
               )}
               <div className="min-h-0 flex-1 overflow-y-auto p-3">
                 {showAssessment && (
                   <div className="mb-3">
-                    <AssessmentPanel
-                      side={s.assessmentSide ?? sideToMove(viewed.fen)}
-                      text={s.assessmentFen === viewed.fen ? s.assessment : ''}
-                      streaming={s.streaming === 'assessment'}
-                      error={s.streaming === 'assessment' ? null : s.llmError}
-                      onSide={(side) => {
-                        void store.getState().requestAssessment(side, { fen: viewed.fen, history: s.history.slice(0, ply) });
-                      }}
+                    <LessonAssessment
+                      store={store}
+                      viewedFen={viewed.fen}
+                      historyUpToPly={historyUpToPly}
                       onFocus={setHoverFocus}
-                      {...focusProps}
+                      focusMode={focusMode}
+                      activeFocus={hoverFocus}
                     />
                   </div>
                 )}
-                <CommentaryPanel
-                  intro={s.intro}
-                  rounds={s.rounds}
+                <LessonCommentary
+                  store={store}
                   activeRoundIndex={activeRoundIndex}
-                  streaming={s.streaming}
-                  llmError={s.llmError}
-                  followUps={s.followUps}
-                  followUpStreaming={s.followUpStreaming}
-                  followUpDraft={s.followUpDraft}
-                  followUpError={s.followUpError}
-                  followUpThreadId={s.followUpThreadId}
-                  onAskFollowUp={(tid, q) => void s.askFollowUp(tid, q)}
-                  onSelectRound={(index) => {
-                    if (index < 0) {
-                      setReviewPly(livePly === 0 ? null : 0);
-                      return;
-                    }
-                    const end = plyAfterRounds[index];
-                    if (end == null) return;
-                    setReviewPly(end >= livePly ? null : end);
-                  }}
+                  onSelectRound={onSelectRound}
                   onFocus={setHoverFocus}
-                  hideComposer
-                  {...focusProps}
+                  focusMode={focusMode}
+                  activeFocus={hoverFocus}
                 />
               </div>
             </div>
@@ -504,11 +553,7 @@ export function LessonView({
         },
       ]}
       footer={showComposer && composerThread ? (
-        <FollowUpComposer
-          disabled={s.streaming !== null || s.followUpStreaming}
-          error={s.followUpError}
-          onAsk={(q) => void s.askFollowUp(composerThread, q)}
-        />
+        <LessonFollowUpComposer store={store} threadId={composerThread} />
       ) : undefined}
     />
   );

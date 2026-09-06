@@ -79,6 +79,7 @@ describe('LessonView 流式期间的渲染', () => {
     });
     expect(store.getState().rounds[0]?.commentary).toBe('第一段');
     const before = probe.count();
+    expect(before).toBeGreaterThan(0);
 
     await act(async () => {
       llm.release();

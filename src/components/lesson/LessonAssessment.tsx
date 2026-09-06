@@ -31,6 +31,7 @@ export function LessonAssessment({ store, viewedFen, historyUpToPly, onFocus, fo
       onSide={(sd) => {
         void store.getState().requestAssessment(sd, { fen: viewedFen, history: historyUpToPly });
       }}
+      onRetry={() => store.getState().retryLastLlm()}
       onFocus={onFocus}
       focusMode={focusMode}
       activeFocus={activeFocus}

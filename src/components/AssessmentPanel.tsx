@@ -10,6 +10,7 @@ export function AssessmentPanel({
   onFocus,
   focusMode = 'hover',
   activeFocus = null,
+  onRetry,
 }: {
   side: 'w' | 'b';
   text: string;
@@ -19,6 +20,7 @@ export function AssessmentPanel({
   onFocus: (f: CommentaryFocus | null) => void;
   focusMode?: CommentaryFocusMode;
   activeFocus?: CommentaryFocus | null;
+  onRetry?: () => void;
 }) {
   return (
     <section className="rounded-xl border border-felt/25 bg-felt-fg/70 p-3">
@@ -41,13 +43,18 @@ export function AssessmentPanel({
       <AnnotatedCommentary
         text={text}
         streaming={streaming}
-        placeholder="正在判断计划、方向与战术…"
+        placeholder={error ? '' : '还没有局面判断'}
         onFocus={onFocus}
         showHoverHint={text.length > 0 && !streaming}
         focusMode={focusMode}
         activeFocus={activeFocus}
       />
-      {error && <p className="mt-2 text-xs text-danger" role="alert">{error}</p>}
+      {error && (
+        <div className="mt-2 flex items-center justify-between gap-2 text-xs text-danger" role="alert">
+          <span className="min-w-0 flex-1">{error}</span>
+          {onRetry && <button type="button" className="btn btn-sm shrink-0" onClick={onRetry}>重试</button>}
+        </div>
+      )}
     </section>
   );
 }

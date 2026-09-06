@@ -115,6 +115,22 @@ describe('session store', () => {
     expect(store.getState().phase).toBe('userTurn');
   });
 
+  it('retryLastLlm 用同一批消息重跑失败的讲解', async () => {
+    let fail = true;
+    const llm: LlmPort = { async *stream() { if (fail) throw new Error('boom'); yield '重试成功'; } };
+    const store = createSessionStore({ llmDebounceMs: 0, engine: fakeEngine(), llm });
+    await store.getState().start(lesson, diff);
+    await store.getState().whenIdle();
+    await store.getState().playUserMove('d2', 'd3');
+    await store.getState().whenIdle();
+    expect(store.getState().llmError).toBeTruthy();
+    fail = false;
+    store.getState().retryLastLlm();
+    await store.getState().whenIdle();
+    expect(store.getState().llmError).toBeNull();
+    expect(store.getState().rounds.at(-1)?.commentary).toBe('重试成功');
+  });
+
   it('rewindToPly 截断着法后可重新走子', async () => {
     const store = createSessionStore({ llmDebounceMs: 0,  engine: fakeEngine(), llm: fakeLlm() });
     await store.getState().start(lesson, diff);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { streamChat, LlmError, normalizeLlmBaseUrl, chatCompletionsUrl, lowerEffort } from '../src/llm/client';
+import { streamChat, LlmError, normalizeLlmBaseUrl, chatCompletionsUrl, lowerEffort, formatLlmHttpError } from '../src/llm/client';
 
 function sseResponse(chunks: string[], status = 200): Response {
   const enc = new TextEncoder();
@@ -88,6 +88,23 @@ describe('lowerEffort', () => {
     expect(lowerEffort('minimal')).toBe('low');
     expect(lowerEffort('none')).toBe('none');
     expect(lowerEffort(undefined)).toBeUndefined();
+  });
+});
+
+describe('formatLlmHttpError 友好化', () => {
+  it('Internal server error 不回显原始 JSON', () => {
+    const s = formatLlmHttpError(400, '{"error":{"message":"Internal server error"}}', cfg);
+    expect(s).not.toContain('{');
+    expect(s).toContain('400');
+    expect(s).toMatch(/服务端错误|稍后重试/);
+  });
+  it('有具体 message 时展示该 message（截断）', () => {
+    const s = formatLlmHttpError(400, '{"error":{"message":"messages must not be empty"}}', cfg);
+    expect(s).toContain('messages must not be empty');
+    expect(s).not.toContain('{');
+  });
+  it('非 JSON body 不抛异常且不回显花括号', () => {
+    expect(() => formatLlmHttpError(500, 'oops <html>', cfg)).not.toThrow();
   });
 });
 

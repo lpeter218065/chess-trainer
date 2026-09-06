@@ -40,6 +40,7 @@ export function LessonCommentary({ store, activeRoundIndex, onSelectRound, onFoc
       onAskFollowUp={(tid, q) => void store.getState().askFollowUp(tid, q)}
       onSelectRound={onSelectRound}
       onFocus={onFocus}
+      onRetry={() => store.getState().retryLastLlm()}
       hideComposer
       focusMode={focusMode}
       activeFocus={activeFocus}

@@ -29,6 +29,7 @@ interface Props {
   focusMode?: CommentaryFocusMode;
   activeFocus?: CommentaryFocus | null;
   hideComposer?: boolean;
+  onRetry?: () => void;
 }
 
 function roundLabel(r: Round): string {
@@ -56,6 +57,7 @@ export function CommentaryPanel({
   focusMode = 'hover',
   activeFocus = null,
   hideComposer = false,
+  onRetry,
 }: Props) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const introThread = lessonFollowUpThreadId('intro');
@@ -120,7 +122,7 @@ export function CommentaryPanel({
           <AnnotatedCommentary
             text={intro}
             streaming={streaming === 'intro'}
-            placeholder="正在生成开场讲解…"
+            placeholder={llmError ? '' : '还没有开场讲解'}
             onFocus={onFocus}
             showHoverHint={intro.length > 0 && streaming !== 'intro'}
             focusMode={focusMode}
@@ -155,7 +157,7 @@ export function CommentaryPanel({
           <AnnotatedCommentary
             text={activeRound.commentary}
             streaming={streamingThisRound}
-            placeholder="讲解生成中…"
+            placeholder={llmError ? '' : '这一步还没有讲解'}
             onFocus={onFocus}
             showHoverHint={activeRound.commentary.length > 0 && !streamingThisRound}
             focusMode={focusMode}
@@ -177,7 +179,12 @@ export function CommentaryPanel({
           )}
         </section>
       )}
-      {llmError && <p className="rounded-lg bg-red-50 p-2 text-xs text-danger" role="alert">{llmError}</p>}
+      {llmError && (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 p-2 text-xs text-danger" role="alert">
+          <span className="min-w-0 flex-1">{llmError}</span>
+          {onRetry && <button type="button" className="btn btn-sm shrink-0" onClick={onRetry}>重试</button>}
+        </div>
+      )}
     </div>
   );
 }

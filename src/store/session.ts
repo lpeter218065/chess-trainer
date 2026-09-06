@@ -99,6 +99,8 @@ export interface SessionState {
   requestAssessment(side: 'w' | 'b', view?: { fen: string; history: string[] }): Promise<void>;
   askFollowUp(threadId: string, question: string): Promise<void>;
   restart(): Promise<void>;
+  /** 重跑最近一次失败的讲解 / 判断等 LLM 流（用保存的同一批消息与写入回调） */
+  retryLastLlm(): void;
   whenIdle(): Promise<void>;
   dispose(): void;
   exportSnapshot(): LessonSnapshot | null;
@@ -169,8 +171,11 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
   };
 
   return createStore<SessionState>((set, get) => {
+    /** 最近一次 stream() 的参数，供 retryLastLlm 原样重放 */
+    let lastStream: { kind: StreamKind; messages: ChatMessage[]; temperature: number; onChunk: (text: string) => void; onDone?: () => void } | null = null;
     /** 流式写入：onChunk 追加文本；出错写 llmError */
     const stream = (kind: StreamKind, messages: ChatMessage[], temperature: number, onChunk: (text: string) => void, onDone?: () => void) => {
+      lastStream = { kind, messages, temperature, onChunk, onDone };
       streamAbort?.abort();
       followUpAbort?.abort();
       const ac = new AbortController();
@@ -655,6 +660,10 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
       async restart() {
         const { lesson, difficulty } = get();
         if (lesson && difficulty) await get().start(lesson, difficulty);
+      },
+
+      retryLastLlm() {
+        if (lastStream) void stream(lastStream.kind, lastStream.messages, lastStream.temperature, lastStream.onChunk, lastStream.onDone);
       },
 
       async whenIdle() {

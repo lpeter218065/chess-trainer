@@ -37,15 +37,22 @@ export function chatCompletionsUrl(baseUrl: string): string {
 
 export function formatLlmHttpError(status: number, body: string, cfg: LlmConfig): string {
   const url = chatCompletionsUrl(cfg.baseUrl);
-  const snippet = body.slice(0, 200).trim();
-  if (status === 404) {
-    if (/route .* not found/i.test(body)) {
-      return `模型服务返回 404：接口路径不存在。Base URL 应填到 /v1（如 https://api.openai.com/v1），勿含 /chat/completions。当前 Base URL：${cfg.baseUrl}，请求：${url}${snippet ? `。${snippet}` : ''}`;
-    }
-    const detail = snippet && snippet !== '""' ? `：${snippet}` : '';
-    return `模型服务返回 404${detail}。接口 ${url} 可达，更可能是模型「${cfg.model}」不存在或当前 Key 无权使用，请在设置中核对模型名。`;
+  let msg = '';
+  try {
+    const j = JSON.parse(body) as { error?: { message?: unknown } | string };
+    const em = typeof j.error === 'string' ? j.error : j.error?.message;
+    if (typeof em === 'string') msg = em.trim();
+  } catch { /* 非 JSON，忽略 */ }
+  if (status === 404 && /route .* not found/i.test(body)) {
+    return `模型服务返回 404：接口路径不存在。Base URL 应填到 /v1（如 https://api.openai.com/v1），勿含 /chat/completions。当前 Base URL：${cfg.baseUrl}，请求：${url}`;
   }
-  return `模型服务返回 ${status}${snippet ? `：${snippet}` : ''}`;
+  if (status === 404) {
+    return `模型服务返回 404。接口 ${url} 可达，更可能是模型「${cfg.model}」不存在或当前 Key 无权使用，请在设置中核对模型名。`;
+  }
+  if (!msg || /internal server error/i.test(msg)) {
+    return `模型服务返回 ${status}：服务端错误，请稍后重试或在设置中更换服务`;
+  }
+  return `模型服务返回 ${status}：${msg.slice(0, 120)}`;
 }
 
 export interface StreamOptions {

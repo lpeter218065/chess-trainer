@@ -227,7 +227,7 @@ function MainLine({
   return <>{parts}</>;
 }
 
-export function VariationMoveList({
+function VariationMoveListImpl({
   tree,
   startFen,
   selectedNodeId,
@@ -249,3 +249,4 @@ export function VariationMoveList({
 }
 
 export const MoveList = memo(MoveListImpl);
+export const VariationMoveList = memo(VariationMoveListImpl);

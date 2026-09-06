@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { uciToSan, uciMoveToSan, formatEval, toPerspective, uciToSquares, fenAfterPlies, fenAfterUciPlies, navigatePly, sanToUci } from '../src/chess/notation';
+import { uciToSan, uciMoveToSan, formatEval, toPerspective, uciToSquares, fenAfterPlies, fenAfterUciPlies, navigatePly, sanToUci, isIncrementalFen } from '../src/chess/notation';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -89,5 +89,33 @@ describe('navigatePly', () => {
     expect(navigatePly(4, 4, 'forward')).toBe(4);
     expect(navigatePly(2, 4, 'start')).toBe(0);
     expect(navigatePly(2, 4, 'end')).toBe(4);
+  });
+});
+
+describe('isIncrementalFen', () => {
+  const AFTER_E4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+  const MIDGAME = 'r1bq1rk1/pp2bppp/2n1pn2/2pp4/3P4/2NBPN2/PPP2PPP/R1BQ1RK1 w - - 0 8';
+  const AFTER_CAPTURE = 'rnbqkbnr/ppp1pppp/8/3P4/8/8/PPPP1PPP/RNBQKBNR b KQkq - 0 3';
+  const CAPTURE_PREV = 'rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3';
+  const BEFORE_CASTLE = 'r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5';
+  const AFTER_CASTLE = 'r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQ1RK1 b kq - 7 5';
+
+  it('起始→e4 为单步（真）', () => {
+    expect(isIncrementalFen(START, AFTER_E4)).toBe(true);
+  });
+  it('起始→中局跳变为假', () => {
+    expect(isIncrementalFen(START, MIDGAME)).toBe(false);
+  });
+  it('空 prev 为假', () => {
+    expect(isIncrementalFen('', AFTER_E4)).toBe(false);
+  });
+  it('相同局面（无变化）为假', () => {
+    expect(isIncrementalFen(START, START)).toBe(false);
+  });
+  it('吃子（棋子数变化）仍为单步（真）', () => {
+    expect(isIncrementalFen(CAPTURE_PREV, AFTER_CAPTURE)).toBe(true);
+  });
+  it('王车易位（动 4 格）为单步（真）', () => {
+    expect(isIncrementalFen(BEFORE_CASTLE, AFTER_CASTLE)).toBe(true);
   });
 });

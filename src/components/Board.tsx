@@ -5,6 +5,7 @@ import type { BoardAnnotations } from '../chess/annotations';
 import { ARROW_COLORS } from '../chess/annotations';
 import type { CommentaryFocus } from '../chess/commentaryMarkers';
 import { EMPTY_TAP, tapMoveReducer, type TapState } from '../chess/tapMove';
+import { isIncrementalFen } from '../chess/notation';
 
 const HOVER_SQUARE = 'rgba(30, 77, 56, 0.38)';
 const HOVER_ARROW = '#1e4d38';
@@ -59,7 +60,15 @@ function BoardImpl({
   const [tap, setTap] = useState<TapState>(EMPTY_TAP);
   const lastTapRef = useRef<string | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
+  const prevFenRef = useRef<string>('');
   const [side, setSide] = useState(0);
+
+  // 仅当本次 fen 相对上一次为「单步」变化时才动画（回退/跳步/变着一次动多子会点选错位）。
+  // prevFenRef 在 commit 后更新，故渲染期读到的是上一帧已提交的 fen。
+  const showAnimations = isIncrementalFen(prevFenRef.current, fen);
+  useEffect(() => {
+    prevFenRef.current = fen;
+  }, [fen]);
 
   useEffect(() => {
     setTap(EMPTY_TAP);
@@ -150,8 +159,9 @@ function BoardImpl({
     boardOrientation: orientation,
     allowDragging: interactive,
     dragActivationDistance: 8,
-    // 回退会一次改很多子；默认动画期间内部格子仍是旧局面，点选/拖动会对不上
-    showAnimations: false,
+    // 回退会一次改很多子；默认动画期间内部格子仍是旧局面，点选/拖动会对不上。
+    // 故仅在本次为单步变化时开启动画。
+    showAnimations,
     canDragPiece: ({ square }: { square: string | null }) => {
       if (!interactive || !square) return false;
       const p = new Chess(fen).get(square as Square);
@@ -171,7 +181,7 @@ function BoardImpl({
     onSquareClick: ({ square }: { square: string }) => {
       applyTap(square);
     },
-  }), [fen, orientation, interactive, turn, squareStyles, arrows, onPieceDrop, applyTap, side]);
+  }), [fen, orientation, interactive, turn, squareStyles, arrows, onPieceDrop, applyTap, side, showAnimations]);
 
   return (
     <div

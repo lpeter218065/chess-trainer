@@ -46,6 +46,7 @@ export function FollowUpComposer({
           placeholder="继续问教练…"
           value={draft}
           disabled={busy}
+          onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center', behavior: 'smooth' })}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {

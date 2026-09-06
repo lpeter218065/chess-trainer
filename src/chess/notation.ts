@@ -103,3 +103,31 @@ export function navigatePly(current: number, live: number, nav: PlyNav): number 
     case 'end': return live;
   }
 }
+
+/** 把 FEN 的棋子布局字段展开为 64 字符（空格用 '.'），便于逐格比较 */
+function expandPlacement(fen: string): string {
+  let out = '';
+  for (const ch of fen.split(' ')[0]) {
+    if (ch === '/') continue;
+    if (ch >= '1' && ch <= '8') out += '.'.repeat(Number(ch));
+    else out += ch;
+  }
+  return out;
+}
+
+/**
+ * 判断 next 相对 prev 是否为「单步」变化（用于是否开启走子动画）。
+ * 逐格比较棋子布局字段，统计变化格子数：1 步最多动 4 格（王车易位）。
+ * 空 prev、非法长度或无变化均返回 false；1..4 格变化返回 true。
+ */
+export function isIncrementalFen(prev: string, next: string): boolean {
+  if (!prev || !next) return false;
+  const a = expandPlacement(prev);
+  const b = expandPlacement(next);
+  if (a.length !== 64 || b.length !== 64) return false;
+  let diff = 0;
+  for (let i = 0; i < 64; i++) {
+    if (a[i] !== b[i]) diff++;
+  }
+  return diff > 0 && diff <= 4;
+}

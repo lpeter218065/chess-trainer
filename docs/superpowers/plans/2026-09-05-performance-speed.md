@@ -2894,3 +2894,283 @@ export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch
 git add src/llm/client.ts tests/probeLlm.test.ts
 git commit -m "fix: 测试连接加 15s 硬超时并取消 /models 响应流，避免服务挂起时无限等待"
 ```
+
+---
+
+## UI 交互优化（2026-09-06，用户要求「这些你来做」）
+
+依据 2026-09-06 三档宽度实机截图评审。Task 20 讲解失败处理（占位/错误/重试）；Task 21 候选空态与空棋谱；Task 22 手机端棋盘尺寸；Task 23 评估条视角/单步动画/favicon/输入框滚动。顺序 20 → 21 → 22 → 23，互相独立。
+
+### Task 20: 讲解失败的处理——占位文案、友好错误、可重试
+
+**Files:**
+- Modify: `src/llm/client.ts`（`formatLlmHttpError` 不再抛原始 JSON）
+- Modify: `src/store/session.ts`（`stream()` 记住上次请求；新增 `retryLastLlm()`）
+- Modify: `src/components/CommentaryPanel.tsx`（占位与错误联动、重试按钮）
+- Modify: `src/components/AssessmentPanel.tsx`（占位与错误联动）
+- Modify: `src/components/lesson/LessonCommentary.tsx`、`src/components/lesson/LessonAssessment.tsx`（透传 onRetry）
+- Test: `tests/client.test.ts`、`tests/session.test.ts`
+
+**Interfaces:**
+- `formatLlmHttpError(status, body, cfg)`：解析 body 为 JSON 取 `error.message`（字符串）；若该值缺失、为空、或等于 `Internal server error`（不分大小写），用友好兜底 `模型服务返回 ${status}：服务端错误，请稍后重试或在设置中更换服务`；否则 `模型服务返回 ${status}：${msg}`，`msg` 截断到 120 字符。404 的路由提示分支保留。绝不把整段 JSON 拼进返回值（原文仍由 `client.ts` 现有 `debugLog('error','llm','http body …')` 记录）。
+- `SessionState.retryLastLlm(): void`：重跑最近一次 `stream()`（intro / commentary / summary / assessment / hint 任一），用保存的同一批 `messages` / `onChunk` / `onDone` / `kind` / `temperature`；无上次请求则忽略。实现：`createStore` 内加 `let lastStream: { kind; messages; temperature; onChunk; onDone? } | null = null;`，`stream()` 开头赋值；`retryLastLlm` 调 `if (lastStream) void stream(lastStream.kind, lastStream.messages, lastStream.temperature, lastStream.onChunk, lastStream.onDone);`。
+- `CommentaryPanel` 新增可选 `onRetry?: () => void`：`llmError` 存在且 `onRetry` 提供时，错误行旁渲染「重试」按钮。三处 `AnnotatedCommentary` 的 `placeholder` 改为：`llmError ? '' : '<中性空态>'`（round→`这一步还没有讲解`，intro→`还没有开场讲解`）。
+- `AssessmentPanel` 新增可选 `onRetry?: () => void`，同样处理；placeholder 改为 `error ? '' : '还没有局面判断'`。
+
+- [ ] **Step 1: 失败测试**
+
+`tests/client.test.ts` 追加（复用文件顶部 `cfg` 或就地构造）：
+
+```ts
+import { formatLlmHttpError } from '../src/llm/client';
+const cfg = { baseUrl: 'https://api.x/v1', apiKey: 'k', model: 'm' };
+describe('formatLlmHttpError 友好化', () => {
+  it('Internal server error 不回显原始 JSON', () => {
+    const s = formatLlmHttpError(400, '{"error":{"message":"Internal server error"}}', cfg);
+    expect(s).not.toContain('{');
+    expect(s).toContain('400');
+    expect(s).toMatch(/服务端错误|稍后重试/);
+  });
+  it('有具体 message 时展示该 message（截断）', () => {
+    const s = formatLlmHttpError(400, '{"error":{"message":"messages must not be empty"}}', cfg);
+    expect(s).toContain('messages must not be empty');
+    expect(s).not.toContain('{');
+  });
+  it('非 JSON body 不抛异常且不回显花括号', () => {
+    expect(() => formatLlmHttpError(500, 'oops <html>', cfg)).not.toThrow();
+  });
+});
+```
+
+`tests/session.test.ts` 追加：
+
+```ts
+  it('retryLastLlm 用同一批消息重跑失败的讲解', async () => {
+    let fail = true;
+    const llm: LlmPort = { async *stream() { if (fail) throw new Error('boom'); yield '重试成功'; } };
+    const store = createSessionStore({ llmDebounceMs: 0, engine: fakeEngine(), llm });
+    await store.getState().start(lesson, diff);
+    await store.getState().whenIdle();
+    await store.getState().playUserMove('d2', 'd3');
+    await store.getState().whenIdle();
+    expect(store.getState().llmError).toBeTruthy();
+    fail = false;
+    store.getState().retryLastLlm();
+    await store.getState().whenIdle();
+    expect(store.getState().llmError).toBeNull();
+    expect(store.getState().rounds.at(-1)?.commentary).toBe('重试成功');
+  });
+```
+
+- [ ] **Step 2: 运行确认失败** `npx vitest run tests/client.test.ts tests/session.test.ts` → FAIL（`formatLlmHttpError` 未导出 / 仍含 JSON；`retryLastLlm` 不存在）。
+
+- [ ] **Step 3: 实现**
+
+`client.ts` 把 `formatLlmHttpError` 改为 `export function`（若尚未导出），并按 Interfaces 重写非 404 分支：
+
+```ts
+export function formatLlmHttpError(status: number, body: string, cfg: LlmConfig): string {
+  const url = chatCompletionsUrl(cfg.baseUrl);
+  let msg = '';
+  try {
+    const j = JSON.parse(body) as { error?: { message?: unknown } | string };
+    const em = typeof j.error === 'string' ? j.error : j.error?.message;
+    if (typeof em === 'string') msg = em.trim();
+  } catch { /* 非 JSON，忽略 */ }
+  if (status === 404 && /route .* not found/i.test(body)) {
+    return `模型服务返回 404：接口路径不存在。Base URL 应填到 /v1（如 https://api.openai.com/v1），勿含 /chat/completions。当前 Base URL：${cfg.baseUrl}，请求：${url}`;
+  }
+  if (status === 404) {
+    return `模型服务返回 404。接口 ${url} 可达，更可能是模型「${cfg.model}」不存在或当前 Key 无权使用，请在设置中核对模型名。`;
+  }
+  if (!msg || /internal server error/i.test(msg)) {
+    return `模型服务返回 ${status}：服务端错误，请稍后重试或在设置中更换服务`;
+  }
+  return `模型服务返回 ${status}：${msg.slice(0, 120)}`;
+}
+```
+
+`session.ts`：按 Interfaces 加 `lastStream` 与 `retryLastLlm`；`retryLastLlm` 列入 `SessionState` 接口与 `initial` 无需改（方法在 store 定义处返回）。
+
+`CommentaryPanel.tsx`：三处 placeholder 依 `llmError` 置空并改中性文案；末尾错误行改为：
+
+```tsx
+      {llmError && (
+        <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 p-2 text-xs text-danger" role="alert">
+          <span className="min-w-0 flex-1">{llmError}</span>
+          {onRetry && <button type="button" className="btn btn-sm shrink-0" onClick={onRetry}>重试</button>}
+        </div>
+      )}
+```
+
+`Props` 加 `onRetry?: () => void`。`AssessmentPanel.tsx` 同样加 `onRetry` 与重试按钮，placeholder 依 `error` 置空。
+
+`LessonCommentary.tsx` 传 `onRetry={() => store.getState().retryLastLlm()}`；`LessonAssessment.tsx` 传 `onRetry={() => store.getState().retryLastLlm()}`。
+
+- [ ] **Step 4: 运行** `npm run typecheck && npm test` 全绿。
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/llm/client.ts src/store/session.ts src/components/CommentaryPanel.tsx src/components/AssessmentPanel.tsx src/components/lesson/LessonCommentary.tsx src/components/lesson/LessonAssessment.tsx tests/client.test.ts tests/session.test.ts
+git commit -m "fix: 讲解失败改为友好错误+重试，占位文案不再显示生成中"
+```
+
+---
+
+### Task 21: 候选招法空态不挤压棋盘；空棋谱不占位
+
+**Files:**
+- Modify: `src/pages/LessonPage.tsx`
+
+**Interfaces:** 无对外接口。
+
+- [ ] **Step 1: 候选空态**
+
+当前 `leftPanel` 在 `showCandidates` 为真时无论有无候选都渲染，空时是一个撑满整栏的空框，并把棋盘挤成三栏变小。改为：只有确有候选线时才给 `leftPanel`，否则不占栏（棋盘保持宽），把「无候选」提示交给工具栏状态文字。
+
+```tsx
+  const hasCandidates = showCandidates && !!enginePv && enginePv.lines.length > 0;
+  const leftPanel = hasCandidates ? (
+    <EngineLinesPanel baseFen={enginePv!.baseFen} lines={enginePv!.lines} orientation={orientation} />
+  ) : undefined;
+```
+
+在棋盘工具栏的状态 `<span>` 内，`showCandidates && !hasCandidates` 时追加一句：`{showCandidates && !hasCandidates && (analyzing ? ' · 候选分析中…' : ' · 这一步暂无候选')}`（拼在现有状态串后，别新增一行）。
+
+- [ ] **Step 2: 空棋谱不占位**
+
+棋盘下方 MoveList 容器当前 `max-h-28 min-h-16`，无着法时也留 64px 空白。改为无着法时不渲染该容器：
+
+```tsx
+          {history.length > 0 && (
+            <div className="max-h-28 shrink-0 overflow-y-auto">
+              <MoveList ... />
+            </div>
+          )}
+```
+
+（去掉 `min-h-16`。）
+
+- [ ] **Step 3: 验证** `npm run typecheck && npm test` 全绿。手工：课程页开局未走子时棋盘下无空白条；打开候选招法且当前无候选时棋盘不缩小、工具栏提示「暂无候选」；有候选时左栏正常显示。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/pages/LessonPage.tsx
+git commit -m "fix: 候选无结果时不挤压棋盘；未走子时不占棋谱空位"
+```
+
+---
+
+### Task 22: 手机端（compact）棋盘占满可用空间
+
+**Files:**
+- Modify: `src/components/layout/TrainerLayout.tsx`
+- Test: `tests/trainerLayout.test.ts`（新，纯函数）
+
+**Interfaces:**
+- 抽出纯函数 `export function compactBoardShare(): { boardFlex: number; panelFlex: number }`? 不必。真正问题：compact 下 `flex-[1.2]`（棋盘区，内含 board + eval + toolbar + movelist）与 `flex-1`（面板区）平分竖向空间，正方形棋盘被高度卡在约 260px，而宽度有 390 可用。
+- 改法：把 compact 的棋盘外层从 `flex-[1.2]` 提到 `flex-[1.6]`，面板区保持 `flex-1`，并给 `boardWrapStyle` 的 compact 分支一个更贴合的高度扣减常量，抽成纯函数 `export function boardSidePx(klass, width, height, hasLeft, reservedBelowPx): number`，其中 compact 的 `reservedBelowPx` 由调用方传入当前实际堆叠高度的估值（工具栏+评估条+棋谱约 200）。函数返回 `Math.max(200, Math.min(width, height - reservedBelowPx))` 之类，单测覆盖：width 主导（窄高屏取 width）、height 主导（矮屏取 height 扣减）、下限。
+
+- [ ] **Step 1: 失败测试** `tests/trainerLayout.test.ts`：
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { boardSidePx } from '../src/components/layout/TrainerLayout';
+describe('boardSidePx', () => {
+  it('compact 竖屏：宽度足够时取接近满宽', () => {
+    // 390 宽、844 高、下方预留 210 → 高度可用 634 > 390，取 390
+    expect(boardSidePx('compact', 390, 844, false, 210)).toBe(390);
+  });
+  it('compact 矮屏：高度不足时按高度扣减', () => {
+    expect(boardSidePx('compact', 390, 520, false, 210)).toBe(310);
+  });
+  it('不低于下限 200', () => {
+    expect(boardSidePx('compact', 390, 360, false, 210)).toBe(200);
+  });
+  it('wide 返回 0（交给 CSS 网格）', () => {
+    expect(boardSidePx('wide', 1200, 800, true, 0)).toBe(0);
+  });
+});
+```
+
+- [ ] **Step 2: 运行确认失败**（函数未导出）。
+
+- [ ] **Step 3: 实现**：把现有 `boardWrapStyle` 的尺寸计算重构为导出的 `boardSidePx(klass, width, height, hasLeft, reservedBelowPx)`（wide 返回 0；medium 无左栏时 `min(width*0.6, height*0.55)`；compact `max(200, min(width, height - reservedBelowPx))`），`boardWrapStyle` 调它并把返回值套进 `{ width: side, maxWidth:'100%', marginInline:'auto' }`。compact 的棋盘外层 div 由 `flex-[1.2]` 改 `flex-[1.6]`。`reservedBelowPx` compact 传 210（工具栏+评估+棋谱一屏内的实际预留），medium 传 0。
+
+- [ ] **Step 4: 验证** `npm run typecheck && npm test` 全绿。手工：iPhone 390 宽课程页，棋盘明显变大、接近满宽；面板仍可滚动；medium/wide 不变。
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/layout/TrainerLayout.tsx tests/trainerLayout.test.ts
+git commit -m "fix: 手机端棋盘占满可用宽度，不再被下方控件挤小"
+```
+
+---
+
+### Task 23: 评估条视角一致、单步走子动画、favicon、输入框聚焦滚动
+
+**Files:**
+- Modify: `src/components/EvalBar.tsx`
+- Modify: `src/components/Board.tsx`
+- Modify: `index.html`
+- Modify: `src/components/FollowUpChat.tsx`
+- Test: `tests/evalBar.test.tsx`（新，可选：断言 aria-label 含双方标注）
+
+**Interfaces:** 无对外接口变化。
+
+- [ ] **Step 1: 评估条标注视角**
+
+条形图按白方视角、数字按用户视角，两者不一致。最小改动：在条两端加极小的「你 / 对手」标注（按 `playerIsWhite` 决定哪端是「你」），并让 `aria-label` 说明。保持数字为用户视角不变。
+
+```tsx
+export function EvalBar({ cp, playerIsWhite }: { cp: number; playerIsWhite: boolean }) {
+  const whiteCp = playerIsWhite ? cp : -cp;
+  const clamped = Math.max(-1000, Math.min(1000, whiteCp));
+  const whitePct = 50 + (clamped / 1000) * 50;
+  const youOnLeft = playerIsWhite; // 白在左端
+  return (
+    <div className="flex items-center gap-2" aria-label={`评估 ${formatEval(cp)}（正为你占优）`}>
+      <span className="w-8 shrink-0 text-[10px] text-muted">{youOnLeft ? '你' : '对手'}</span>
+      <div className="h-3 flex-1 overflow-hidden rounded-full border border-ink/20 bg-ink" aria-hidden="true">
+        <div className="h-full bg-white transition-all duration-200" style={{ width: `${whitePct}%` }} />
+      </div>
+      <span className="w-8 shrink-0 text-right text-[10px] text-muted">{youOnLeft ? '对手' : '你'}</span>
+      <span className="w-16 text-right font-mono text-sm tabular-nums text-ink">{formatEval(cp)}</span>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 2: 单步走子动画**
+
+`Board` 现在 `showAnimations: false`（为规避回退多子时点选错位）。改为：默认开启动画，仅当本次 `fen` 变化相对上一个 `fen` 是「非单步」（回退 / 跳步 / 变着，多个格子变化）时临时关。实现：用 `useRef` 存上一个 `fen`，比较两个 FEN 的棋子布局差异格子数，`<= 4`（一步含吃子/易位最多动 4 格：王车易位）视为单步，`showAnimations` 该次为真，否则假。把判断抽成纯函数 `export function isIncrementalFen(prev: string, next: string): boolean` 放 `src/chess/notation.ts` 并单测（起始→e4 为真；起始→任意中局跳变为假；空 prev 为假）。`Board` 的 `options.showAnimations` 用它。
+
+- [ ] **Step 3: favicon**
+
+`index.html` `<head>` 加：
+
+```html
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%99%9E%3C/text%3E%3C/svg%3E" />
+```
+
+（内联 SVG 马 ♞，避免多一个网络请求，也消除 favicon 404。原生端无影响。）
+
+- [ ] **Step 4: 追问框聚焦滚动**
+
+`FollowUpComposer` 的 `<input>` 加 `onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center', behavior: 'smooth' })}`，缓解 compact 下 iOS 键盘遮挡。
+
+- [ ] **Step 5: 测试**
+
+`tests/notation.test.ts` 追加 `isIncrementalFen` 用例（起始→e4 true；起始→中局 FEN false；`isIncrementalFen('', x)` false）。EvalBar 测试可选：`tests/evalBar.test.tsx` 断言 `playerIsWhite=false` 时右端标注为「你」。
+
+- [ ] **Step 6: 验证与提交**
+
+`npm run typecheck && npm test` 全绿；`npm run build` 无警告。
+
+```bash
+git add src/components/EvalBar.tsx src/components/Board.tsx src/chess/notation.ts index.html src/components/FollowUpChat.tsx tests/notation.test.ts tests/evalBar.test.tsx
+git commit -m "polish: 评估条标注双方视角、单步走子动画、favicon、追问框聚焦滚动"
+```

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { probeLlmConnection, LlmError } from '../src/llm/client';
 
 const cfg = { baseUrl: 'https://api.example.com/v1/', apiKey: 'sk-test', model: 'gpt-x' };
@@ -56,5 +56,32 @@ describe('probeLlmConnection', () => {
     const fetchImpl: typeof fetch = async (input) => { calls.push(String(input)); return new Response('{"data":[]}', { status: 200 }); };
     await probeLlmConnection(cfg, fetchImpl);
     expect(calls).toHaveLength(1);
+  });
+
+  it('服务挂起（响应流永不结束）时在超时内失败，而不是无限等待', async () => {
+    vi.useFakeTimers();
+    const fetchImpl: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
+      // 永不 resolve；只在 abort 时 reject，模拟原生流被超时中止
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    });
+    const p = probeLlmConnection(cfg, fetchImpl);
+    const assertion = expect(p).rejects.toThrow(/超时/);
+    await vi.advanceTimersByTimeAsync(15000);
+    await assertion;
+    vi.useRealTimers();
+  });
+
+  it('/models 404 回退前取消 GET 响应流', async () => {
+    let cancelled = false;
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith('/models')) {
+        const body = new ReadableStream({ cancel() { cancelled = true; } });
+        return new Response(body, { status: 404 });
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"好"}}]}\n\ndata: [DONE]\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    };
+    await probeLlmConnection(cfg, fetchImpl);
+    expect(cancelled).toBe(true);
   });
 });

@@ -153,33 +153,48 @@ export function modelsUrl(baseUrl: string): string {
 /** 设置页「测试连接」：GET /models */
 export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch = llmFetch): Promise<void> {
   const url = modelsUrl(cfg.baseUrl);
-  let res: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
   try {
-    debugLog('info', 'llm', `probe ${url}`);
-    res = await fetchImpl(url, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${cfg.apiKey}`, Accept: 'application/json' },
-    });
+    let res: Response;
+    try {
+      debugLog('info', 'llm', `probe ${url}`);
+      res = await fetchImpl(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${cfg.apiKey}`, Accept: 'application/json' },
+        signal: controller.signal,
+      });
+    } catch (e) {
+      if ((e as Error).name === 'AbortError')
+        throw new LlmError('测试连接超时：服务在 15 秒内没有完成响应，请检查服务地址与网络');
+      debugLog('error', 'llm', `probe fail ${(e as Error).message}`);
+      throw new LlmError(CORS_HINT);
+    }
+    if (res.status === 404 || res.status === 405) {
+      await res.body?.cancel().catch(() => {});
+      debugLog('info', 'llm', `probe /models ${res.status}，回退到最小对话`);
+      await testConnection(cfg, fetchImpl, controller.signal);
+      return;
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new LlmError(formatLlmHttpError(res.status, text, cfg), res.status);
+    }
   } catch (e) {
-    debugLog('error', 'llm', `probe fail ${(e as Error).message}`);
-    throw new LlmError(CORS_HINT);
-  }
-  if (res.status === 404 || res.status === 405) {
-    debugLog('info', 'llm', `probe /models ${res.status}，回退到最小对话`);
-    await testConnection(cfg, fetchImpl);
-    return;
-  }
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new LlmError(formatLlmHttpError(res.status, text, cfg), res.status);
+    if ((e as Error).name === 'AbortError')
+      throw new LlmError('测试连接超时：服务在 15 秒内没有完成响应，请检查服务地址与网络');
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 /** 设置页“测试连接”：拿到第一个 token 即成功 */
-export async function testConnection(cfg: LlmConfig, fetchImpl?: typeof fetch): Promise<void> {
+export async function testConnection(cfg: LlmConfig, fetchImpl?: typeof fetch, signal?: AbortSignal): Promise<void> {
   const gen = streamChat(cfg, [{ role: 'user', content: '回复“好”' }], {
     temperature: 0,
     fetchImpl,
+    signal,
     maxTokens: 16,
     reasoningEffort: cfg.reasoningEffort && cfg.reasoningEffort !== 'none' ? 'low' : cfg.reasoningEffort,
   });

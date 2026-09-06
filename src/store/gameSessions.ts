@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { createPlatformStorage, debounceStorage } from '../platform/storage';
+import { snapshotStorage } from './snapshotStorage';
+import { exploreSummary, lessonSummary } from './sessionSummary';
 import type { MoveNodeId, MoveTree } from '../chess/moveTree';
 import type { FollowUpTurn } from '../llm/prompts';
 import type { DifficultyId } from '../engine/difficulty';
@@ -19,6 +21,8 @@ export interface SessionMeta {
   lessonId?: string;
   /** 自定义开局练习的完整定义（模型生成的开局书），用于会话恢复 */
   drill?: OpeningDrill;
+  /** 保存快照时算好的一行摘要；列表页据此渲染，无需加载快照 */
+  summary?: string;
 }
 
 export interface ExploreSnapshot {
@@ -65,8 +69,6 @@ export interface LessonSnapshot {
 
 interface GameSessionsState {
   metas: Record<string, SessionMeta>;
-  exploreData: Record<string, ExploreSnapshot>;
-  lessonData: Record<string, LessonSnapshot>;
   activeExploreId: string | null;
   activeLessonId: string | null;
 
@@ -84,8 +86,17 @@ interface GameSessionsState {
   newExplore(title?: string): string;
   flushPendingSave(): Promise<void>;
   newLesson(lessonId: string, title: string, extra?: { drill?: OpeningDrill }): string;
+  /** 读取该会话的快照到内存缓存；读快照前必须先 await 它 */
+  loadSnapshot(id: string): Promise<void>;
   getExploreSnapshot(id: string): ExploreSnapshot | null;
   getLessonSnapshot(id: string): LessonSnapshot | null;
+}
+
+/** 持久化的部分：只有 metas 与活动会话，快照走 snapshotStorage 分 key 存 */
+export interface PersistedGameSessions {
+  metas: Record<string, SessionMeta>;
+  activeExploreId: string | null;
+  activeLessonId: string | null;
 }
 
 function nowIso() {
@@ -103,16 +114,38 @@ function defaultExploreTitle() {
 
 const gameSessionStorage = debounceStorage(createPlatformStorage('large'), 400);
 
-export function flushPendingSave(): Promise<void> {
-  return gameSessionStorage.flush();
+export async function flushPendingSave(): Promise<void> {
+  await Promise.all([gameSessionStorage.flush(), snapshotStorage.flush()]);
+}
+
+/** v0：快照曾与 metas 同存一个 blob。搬进 snapshotStorage，并把摘要补进 meta。 */
+export function migrateGameSessions(persisted: unknown, version: number): PersistedGameSessions {
+  const p = (persisted ?? {}) as Partial<PersistedGameSessions> & {
+    exploreData?: Record<string, ExploreSnapshot>;
+    lessonData?: Record<string, LessonSnapshot>;
+  };
+  const metas: Record<string, SessionMeta> = { ...(p.metas ?? {}) };
+  if (version < 1) {
+    for (const [id, snap] of Object.entries(p.exploreData ?? {})) {
+      snapshotStorage.set(id, snap);
+      if (metas[id]) metas[id] = { ...metas[id], summary: exploreSummary(snap) };
+    }
+    for (const [id, snap] of Object.entries(p.lessonData ?? {})) {
+      snapshotStorage.set(id, snap);
+      if (metas[id]) metas[id] = { ...metas[id], summary: lessonSummary(snap) };
+    }
+  }
+  return {
+    metas,
+    activeExploreId: p.activeExploreId ?? null,
+    activeLessonId: p.activeLessonId ?? null,
+  };
 }
 
 export const useGameSessions = create<GameSessionsState>()(
   persist(
     (set, get) => ({
       metas: {},
-      exploreData: {},
-      lessonData: {},
       activeExploreId: null,
       activeLessonId: null,
 
@@ -142,72 +175,72 @@ export const useGameSessions = create<GameSessionsState>()(
       },
 
       saveExploreSnapshot(id, snap, title) {
-        set((s) => {
-          const prev = s.metas[id];
-          if (!prev || prev.kind !== 'explore') return s;
-          return {
-            exploreData: { ...s.exploreData, [id]: snap },
-            metas: {
-              ...s.metas,
-              [id]: { ...prev, title: title ?? prev.title, updatedAt: nowIso() },
-            },
-          };
-        });
+        const prev = get().metas[id];
+        if (!prev || prev.kind !== 'explore') return;
+        snapshotStorage.set(id, snap);
+        set((s) => ({
+          metas: {
+            ...s.metas,
+            [id]: { ...prev, title: title ?? prev.title, updatedAt: nowIso(), summary: exploreSummary(snap) },
+          },
+        }));
       },
 
       saveLessonSnapshot(id, snap, title) {
-        set((s) => {
-          const prev = s.metas[id];
-          if (!prev || prev.kind !== 'lesson') return s;
-          return {
-            lessonData: { ...s.lessonData, [id]: snap },
-            metas: {
-              ...s.metas,
-              [id]: {
-                ...prev,
-                title: title ?? prev.title,
-                updatedAt: nowIso(),
-                lessonId: snap.lessonId,
-              },
+        const prev = get().metas[id];
+        if (!prev || prev.kind !== 'lesson') return;
+        snapshotStorage.set(id, snap);
+        set((s) => ({
+          metas: {
+            ...s.metas,
+            [id]: {
+              ...prev,
+              title: title ?? prev.title,
+              updatedAt: nowIso(),
+              lessonId: snap.lessonId,
+              summary: lessonSummary(snap),
             },
-          };
-        });
+          },
+        }));
       },
 
       saveAsExplore(fromId, title) {
         const s = get();
-        const data = s.exploreData[fromId];
+        const data = snapshotStorage.peek<ExploreSnapshot>(fromId);
         const prev = s.metas[fromId];
         if (!data || !prev || prev.kind !== 'explore') return null;
         const id = newId();
-        const meta: SessionMeta = { id, kind: 'explore', title: title.trim() || defaultExploreTitle(), updatedAt: nowIso() };
-        set({
-          metas: { ...s.metas, [id]: meta },
-          exploreData: { ...s.exploreData, [id]: structuredClone(data) },
-          activeExploreId: id,
-        });
+        const copy = structuredClone(data);
+        const meta: SessionMeta = {
+          id,
+          kind: 'explore',
+          title: title.trim() || defaultExploreTitle(),
+          updatedAt: nowIso(),
+          summary: exploreSummary(copy),
+        };
+        snapshotStorage.set(id, copy);
+        set({ metas: { ...s.metas, [id]: meta }, activeExploreId: id });
         return id;
       },
 
       saveAsLesson(fromId, title) {
         const s = get();
-        const data = s.lessonData[fromId];
+        const data = snapshotStorage.peek<LessonSnapshot>(fromId);
         const prev = s.metas[fromId];
         if (!data || !prev || prev.kind !== 'lesson') return null;
         const id = newId();
+        const copy = structuredClone(data);
         const meta: SessionMeta = {
           id,
           kind: 'lesson',
           title: title.trim() || prev.title,
           updatedAt: nowIso(),
-          lessonId: data.lessonId,
+          lessonId: copy.lessonId,
           ...(prev.drill ? { drill: prev.drill } : {}),
+          summary: lessonSummary(copy),
         };
-        set({
-          metas: { ...s.metas, [id]: meta },
-          lessonData: { ...s.lessonData, [id]: structuredClone(data) },
-          activeLessonId: id,
-        });
+        snapshotStorage.set(id, copy);
+        set({ metas: { ...s.metas, [id]: meta }, activeLessonId: id });
         return id;
       },
 
@@ -232,14 +265,10 @@ export const useGameSessions = create<GameSessionsState>()(
       },
 
       deleteSession(id) {
+        snapshotStorage.remove(id);
         set((s) => {
           const metas = { ...s.metas };
-          const exploreData = { ...s.exploreData };
-          const lessonData = { ...s.lessonData };
-          const kind = metas[id]?.kind;
           delete metas[id];
-          delete exploreData[id];
-          delete lessonData[id];
           let { activeExploreId, activeLessonId } = s;
           if (activeExploreId === id) {
             activeExploreId = Object.values(metas).find((m) => m.kind === 'explore')?.id ?? null;
@@ -247,8 +276,7 @@ export const useGameSessions = create<GameSessionsState>()(
           if (activeLessonId === id) {
             activeLessonId = Object.values(metas).find((m) => m.kind === 'lesson')?.id ?? null;
           }
-          void kind;
-          return { metas, exploreData, lessonData, activeExploreId, activeLessonId };
+          return { metas, activeExploreId, activeLessonId };
         });
       },
 
@@ -284,21 +312,30 @@ export const useGameSessions = create<GameSessionsState>()(
         return id;
       },
 
+      async loadSnapshot(id) {
+        await snapshotStorage.load(id);
+      },
+
       getExploreSnapshot(id) {
-        return get().exploreData[id] ?? null;
+        return snapshotStorage.peek<ExploreSnapshot>(id);
       },
 
       getLessonSnapshot(id) {
-        return get().lessonData[id] ?? null;
+        return snapshotStorage.peek<LessonSnapshot>(id);
       },
 
-      flushPendingSave() {
-        return gameSessionStorage.flush();
-      },
+      flushPendingSave,
     }),
     {
       name: 'chess-trainer-game-sessions',
+      version: 1,
       storage: createJSONStorage(() => gameSessionStorage),
+      partialize: (s) => ({
+        metas: s.metas,
+        activeExploreId: s.activeExploreId,
+        activeLessonId: s.activeLessonId,
+      }),
+      migrate: (p, v) => migrateGameSessions(p, v) as unknown as GameSessionsState,
     },
   ),
 );

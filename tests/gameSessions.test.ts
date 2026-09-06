@@ -1,17 +1,28 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useGameSessions } from '../src/store/gameSessions';
+import { useGameSessions, migrateGameSessions } from '../src/store/gameSessions';
+import { createSnapshotStorage, __setSnapshotStorageForTests, SNAPSHOT_KEY_PREFIX } from '../src/store/snapshotStorage';
 import { createEmptyTree } from '../src/chess/moveTree';
 import { START_FEN } from '../src/chess/pgn';
+import { asyncBackend } from './helpers/asyncBackend';
+
+const emptyExplore = () => ({
+  startFen: START_FEN,
+  tree: createEmptyTree(),
+  path: [],
+  reviewDepth: null,
+  orientation: 'white' as const,
+  commentary: '',
+  commentaryPly: null,
+  followUps: {},
+});
 
 describe('gameSessions', () => {
+  let backend: ReturnType<typeof asyncBackend>;
+
   beforeEach(() => {
-    useGameSessions.setState({
-      metas: {},
-      exploreData: {},
-      lessonData: {},
-      activeExploreId: null,
-      activeLessonId: null,
-    });
+    backend = asyncBackend();
+    __setSnapshotStorageForTests(createSnapshotStorage(backend));
+    useGameSessions.setState({ metas: {}, activeExploreId: null, activeLessonId: null });
   });
 
   it('newExplore sets active and saveAs clones', () => {
@@ -31,6 +42,11 @@ describe('gameSessions', () => {
     expect(copy).toBeTruthy();
     expect(useGameSessions.getState().getExploreSnapshot(copy!)?.commentary).toBe('hello');
     expect(useGameSessions.getState().list('explore')).toHaveLength(2);
+  });
+
+  it('saveAsExplore 在源快照未加载时返回 null', () => {
+    const id = useGameSessions.getState().newExplore('未加载');
+    expect(useGameSessions.getState().saveAsExplore(id, '副本')).toBeNull();
   });
 
   it('ensureLessonActive reuses same lesson session', () => {
@@ -55,6 +71,7 @@ describe('gameSessions', () => {
     const b = useGameSessions.getState().ensureLessonActive('opening/italian-game', '意大利');
     expect(b).toBe(a);
     expect(useGameSessions.getState().getLessonSnapshot(b)?.intro).toBe('intro');
+    expect(useGameSessions.getState().metas[b].summary).toBe('已开局');
   });
 
   it('newLesson 可附带自定义练习定义，保存在 meta 上', () => {
@@ -63,5 +80,64 @@ describe('gameSessions', () => {
     expect(useGameSessions.getState().metas[id].drill?.opponentBook).toEqual([['e4', 'e5']]);
     const plain = useGameSessions.getState().newLesson('drill/london/w/start', '伦敦');
     expect(useGameSessions.getState().metas[plain].drill).toBeUndefined();
+  });
+
+  it('保存会话 A 不重写会话 B；meta.summary 随保存更新', async () => {
+    const gs = useGameSessions.getState();
+    const a = gs.newExplore('A');
+    const b = gs.newExplore('B');
+    const snap = emptyExplore();
+    gs.saveExploreSnapshot(b, snap);
+    await gs.flushPendingSave();
+    const rawB = backend.m.get(`${SNAPSHOT_KEY_PREFIX}${b}`);
+    expect(rawB).toBeTruthy();
+    const writesBefore = backend.writes();
+    gs.saveExploreSnapshot(a, snap);
+    await gs.flushPendingSave();
+    expect(backend.m.get(`${SNAPSHOT_KEY_PREFIX}${b}`)).toBe(rawB);
+    expect(backend.writes()).toBe(writesBefore + 1);
+    expect(useGameSessions.getState().metas[a].summary).toBe('起始局面');
+  });
+
+  it('deleteSession 删除快照 key', async () => {
+    const gs = useGameSessions.getState();
+    const id = gs.newExplore('待删');
+    gs.saveExploreSnapshot(id, emptyExplore());
+    await gs.flushPendingSave();
+    expect(backend.m.has(`${SNAPSHOT_KEY_PREFIX}${id}`)).toBe(true);
+    useGameSessions.getState().deleteSession(id);
+    await useGameSessions.getState().flushPendingSave();
+    expect(backend.m.has(`${SNAPSHOT_KEY_PREFIX}${id}`)).toBe(false);
+    expect(useGameSessions.getState().getExploreSnapshot(id)).toBeNull();
+  });
+
+  it('migrate 把旧 exploreData / lessonData 搬进 snapshotStorage 并补 summary', async () => {
+    const migrated = migrateGameSessions(
+      {
+        metas: { e1: { id: 'e1', kind: 'explore', title: 'e', updatedAt: 'x' } },
+        exploreData: {
+          e1: {
+            startFen: START_FEN,
+            tree: createEmptyTree(),
+            path: [],
+            reviewDepth: null,
+            orientation: 'white',
+            commentary: 'old',
+            commentaryPly: null,
+            followUps: {},
+          },
+        },
+        lessonData: {},
+        activeExploreId: 'e1',
+        activeLessonId: null,
+      },
+      0,
+    );
+    expect((migrated as { exploreData?: unknown }).exploreData).toBeUndefined();
+    expect(migrated.metas.e1.summary).toBe('起始局面');
+    useGameSessions.setState(migrated);
+    expect(useGameSessions.getState().getExploreSnapshot('e1')?.commentary).toBe('old');
+    await useGameSessions.getState().flushPendingSave();
+    expect(backend.m.has(`${SNAPSHOT_KEY_PREFIX}e1`)).toBe(true);
   });
 });

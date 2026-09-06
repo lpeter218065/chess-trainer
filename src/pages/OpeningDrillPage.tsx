@@ -3,7 +3,8 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import type { StoreApi } from 'zustand';
 import type { Color } from '../lessons/schema';
 import { openingDrillById, type DrillStartMode, type OpeningDrill } from '../lessons/openingDrills';
-import { drillToLesson, parseDrillLessonId } from '../lessons/drillLesson';
+import { drillToLesson } from '../lessons/drillLesson';
+import { parseDrillLessonId } from '../lessons/openingDrills';
 import { CUSTOM_DRILL_ID, CUSTOM_DRILL_STUB, generateCustomDrill } from '../lessons/customDrill';
 import { OPENING_OPPONENTS, openingOpponentById, type DifficultyId } from '../engine/difficulty';
 import { bootLessonSession } from '../store/sessionInstance';
@@ -72,6 +73,7 @@ export function OpeningDrillPage() {
       setStatus('正在恢复练习…');
       try {
         const lesson = drillToLesson(source, parsed.color, parsed.startMode);
+        await gs.loadSnapshot(sessionParam);
         const snap = gs.getLessonSnapshot(sessionParam);
         const difficulty = openingOpponentById(snap?.difficultyId ?? oppId);
         gs.setActiveLesson(sessionParam);

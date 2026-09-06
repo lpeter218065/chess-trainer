@@ -3,6 +3,9 @@ import type { Color, Lesson } from './schema';
 import type { DrillStartMode, OpeningDrill } from './openingDrills';
 import { START_FEN } from '../chess/pgn';
 
+// 纯字符串解析，住在无 chess.js 依赖的 openingDrills 里；此处再导出以兼容既有引用
+export { parseDrillLessonId } from './openingDrills';
+
 /** 从起始局面走出 SAN 序列，校验每步合法 */
 export function fenAfterSans(startFen: string, sans: string[]): string {
   const c = new Chess(startFen);
@@ -44,11 +47,4 @@ export function drillToLesson(drill: OpeningDrill, color: Color, startMode: Dril
     tags: ['opening-drill', drill.id, color, startMode],
     opponentBook: drill.opponentBook,
   };
-}
-
-/** 解析 drillToLesson 生成的 lesson id；非该格式返回 null */
-export function parseDrillLessonId(id: string): { drillId: string; color: Color; startMode: DrillStartMode } | null {
-  const m = /^drill\/(.+)\/(w|b)\/(start|tabiya)$/.exec(id);
-  if (!m) return null;
-  return { drillId: m[1], color: m[2] as Color, startMode: m[3] === 'start' ? 'from-start' : 'tabiya' };
 }

@@ -55,6 +55,7 @@ export async function bootLessonSession(lesson: Lesson, difficulty: Difficulty):
   const store = await getSessionStore();
   const gs = useGameSessions.getState();
   const id = gs.ensureLessonActive(lesson.id, `${lesson.title}`);
+  await gs.loadSnapshot(id);
   const snap = gs.getLessonSnapshot(id);
   if (snap && snap.lessonId === lesson.id) {
     runInBackground(store.getState().hydrateSnapshot(snap, lesson));
@@ -77,6 +78,7 @@ export async function switchLessonSession(id: string, lesson: Lesson, difficulty
     if (cur) gs.saveLessonSnapshot(gs.activeLessonId, cur);
   }
   gs.setActiveLesson(id);
+  await gs.loadSnapshot(id);
   const snap = gs.getLessonSnapshot(id);
   if (snap && snap.lessonId === lesson.id) {
     runInBackground(store.getState().hydrateSnapshot(snap, lesson));

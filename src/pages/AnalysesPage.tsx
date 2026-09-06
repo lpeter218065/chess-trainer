@@ -3,36 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   formatSessionTime,
   useGameSessions,
-  type ExploreSnapshot,
-  type LessonSnapshot,
   type SessionKind,
   type SessionMeta,
 } from '../store/gameSessions';
-import { parseDrillLessonId } from '../lessons/drillLesson';
+import { parseDrillLessonId } from '../lessons/openingDrills';
 
 type KindFilter = 'all' | SessionKind;
 
-function exploreSummary(snap: ExploreSnapshot | null | undefined): string {
-  if (!snap) return '空分析';
-  const n = snap.path.length;
-  if (n === 0) return '起始局面';
-  const comments = Object.keys(snap.commentaries ?? {}).length;
-  const bits = [`${n} 手`];
-  if (comments > 0) bits.push(`${comments} 条讲解`);
-  return bits.join(' · ');
-}
-
-function lessonSummary(snap: LessonSnapshot | null | undefined): string {
-  if (!snap) return '课程练习';
-  const rounds = snap.rounds.length;
-  if (rounds === 0) return snap.intro ? '已开局' : '未开始';
-  return `${rounds} 回合${snap.phase === 'finished' ? ' · 已结束' : ''}`;
-}
-
 export function AnalysesPage() {
   const metasMap = useGameSessions((s) => s.metas);
-  const exploreData = useGameSessions((s) => s.exploreData);
-  const lessonData = useGameSessions((s) => s.lessonData);
   const activeExploreId = useGameSessions((s) => s.activeExploreId);
   const activeLessonId = useGameSessions((s) => s.activeLessonId);
   const deleteSession = useGameSessions((s) => s.deleteSession);
@@ -157,10 +136,7 @@ export function AnalysesPage() {
         <ul className="panel divide-y divide-line">
           {items.map((m) => {
             const active = m.id === activeExploreId || m.id === activeLessonId;
-            const summary =
-              m.kind === 'explore'
-                ? exploreSummary(exploreData[m.id])
-                : lessonSummary(lessonData[m.id]);
+            const summary = m.summary ?? (m.kind === 'explore' ? '空分析' : '课程练习');
             const editing = renamingId === m.id;
             return (
               <li key={m.id} className={`flex items-stretch ${active ? 'bg-felt-fg/80' : ''}`}>

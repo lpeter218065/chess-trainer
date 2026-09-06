@@ -30,7 +30,7 @@ function attachExploreAutosave(store: StoreApi<ExploreState>) {
       const id = gs.activeExploreId ?? gs.ensureExploreActive();
       const snap = store.getState().exportSnapshot();
       const json = JSON.stringify(snap);
-      if (json === lastJson && gs.exploreData[id] && JSON.stringify(gs.exploreData[id]) === json) return;
+      if (json === lastJson && JSON.stringify(gs.getExploreSnapshot(id)) === json) return;
       lastJson = json;
       gs.saveExploreSnapshot(id, snap);
     });
@@ -39,10 +39,11 @@ function attachExploreAutosave(store: StoreApi<ExploreState>) {
 
 export function getExploreStore(): Promise<StoreApi<ExploreState>> {
   if (!storePromise) {
-    storePromise = getEngine().then((engine) => {
+    storePromise = getEngine().then(async (engine) => {
       const store = createExploreStore(engine, llm);
       const gs = useGameSessions.getState();
       const id = gs.ensureExploreActive();
+      await gs.loadSnapshot(id);
       const snap = gs.getExploreSnapshot(id);
       if (snap) {
         store.getState().hydrateSnapshot(snap);
@@ -65,6 +66,7 @@ export async function switchExploreSession(id: string): Promise<StoreApi<Explore
     gs.saveExploreSnapshot(gs.activeExploreId, store.getState().exportSnapshot());
   }
   gs.setActiveExplore(id);
+  await gs.loadSnapshot(id);
   const snap = gs.getExploreSnapshot(id);
   if (snap) store.getState().hydrateSnapshot(snap);
   else {

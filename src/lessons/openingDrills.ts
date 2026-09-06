@@ -1,3 +1,5 @@
+import type { Color } from './schema';
+
 /** 起步方式：起始局面，或走出该开局定式前几步后轮到己方 */
 export type DrillStartMode = 'from-start' | 'tabiya';
 
@@ -144,4 +146,11 @@ export const OPENING_DRILLS: OpeningDrill[] = [
 
 export function openingDrillById(id: string): OpeningDrill | undefined {
   return OPENING_DRILLS.find((d) => d.id === id);
+}
+
+/** 解析 drillToLesson 生成的 lesson id；非该格式返回 null（纯字符串解析，不依赖 chess.js） */
+export function parseDrillLessonId(id: string): { drillId: string; color: Color; startMode: DrillStartMode } | null {
+  const m = /^drill\/(.+)\/(w|b)\/(start|tabiya)$/.exec(id);
+  if (!m) return null;
+  return { drillId: m[1], color: m[2] as Color, startMode: m[3] === 'start' ? 'from-start' : 'tabiya' };
 }

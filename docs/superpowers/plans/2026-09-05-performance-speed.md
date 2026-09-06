@@ -1630,6 +1630,8 @@ git commit -m "perf: 系统字体栈；路由级代码拆分（主 chunk 507kB �
 
 ### Task 10: 会话快照按会话分 key 存储（spec H）
 
+> **2026-09-06 决定：本期跳过。** 基线里 `useGameSessions` 已通过 `debounceStorage(createPlatformStorage('large'), 400)` 在原生端走 Filesystem，本 Task 的同步 localStorage 设计会让 iPad 上的快照退回 WKWebView localStorage。待后续单独出 spec，在平台适配器上做异步的按会话分文件存储。下面的内容保留作参考，不执行。
+
 **Files:**
 - Create: `src/store/snapshotStorage.ts`
 - Modify: `src/store/gameSessions.ts`

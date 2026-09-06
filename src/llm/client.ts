@@ -164,6 +164,11 @@ export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch
     debugLog('error', 'llm', `probe fail ${(e as Error).message}`);
     throw new LlmError(CORS_HINT);
   }
+  if (res.status === 404 || res.status === 405) {
+    debugLog('info', 'llm', `probe /models ${res.status}，回退到最小对话`);
+    await testConnection(cfg, fetchImpl);
+    return;
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new LlmError(formatLlmHttpError(res.status, text, cfg), res.status);

@@ -28,4 +28,33 @@ describe('probeLlmConnection', () => {
     };
     await expect(probeLlmConnection(cfg, fetchImpl)).rejects.toThrow(/不允许从 App 内直连/);
   });
+
+  it('/models 404 时回退到最小对话，对话成功即成功', async () => {
+    const calls: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith('/models')) return new Response('{"error":"Not Found"}', { status: 404 });
+      const body = 'data: {"choices":[{"delta":{"content":"好"}}]}\n\ndata: [DONE]\n\n';
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    };
+    await expect(probeLlmConnection(cfg, fetchImpl)).resolves.toBeUndefined();
+    expect(calls.some((u) => u.endsWith('/chat/completions'))).toBe(true);
+  });
+
+  it('/models 404 且对话 400 时抛出对话的错误', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith('/models')) return new Response('', { status: 404 });
+      return new Response('{"error":{"message":"Internal server error"}}', { status: 400 });
+    };
+    await expect(probeLlmConnection(cfg, fetchImpl)).rejects.toThrow(/400/);
+  });
+
+  it('/models 200 时不再发起对话', async () => {
+    const calls: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => { calls.push(String(input)); return new Response('{"data":[]}', { status: 200 }); };
+    await probeLlmConnection(cfg, fetchImpl);
+    expect(calls).toHaveLength(1);
+  });
 });

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { StoreApi } from 'zustand';
 import type { Color } from '../lessons/schema';
 import { openingDrillById, type DrillStartMode, type OpeningDrill } from '../lessons/openingDrills';
-import { drillToLesson } from '../lessons/drillLesson';
+import { drillToLesson, parseDrillLessonId } from '../lessons/drillLesson';
 import { CUSTOM_DRILL_ID, CUSTOM_DRILL_STUB, generateCustomDrill } from '../lessons/customDrill';
 import { OPENING_OPPONENTS, openingOpponentById, type DifficultyId } from '../engine/difficulty';
 import { bootLessonSession } from '../store/sessionInstance';
@@ -42,6 +42,8 @@ export function OpeningDrillPage() {
   const [busy, setBusy] = useState(false);
   const [expectedLessonId, setExpectedLessonId] = useState('');
   const hasKey = useSettings((s) => Boolean(s.llm.apiKey));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sessionParam = searchParams.get('session');
 
   useEffect(() => {
     setPhase('setup');
@@ -54,6 +56,43 @@ export function OpeningDrillPage() {
     setStartError(null);
     setBusy(false);
   }, [rawId]);
+
+  // 从「我的分析」恢复某次练习会话：?session=<id>
+  useEffect(() => {
+    if (!sessionParam) return;
+    let cancelled = false;
+    (async () => {
+      const gs = useGameSessions.getState();
+      const meta = gs.metas[sessionParam];
+      const parsed = meta?.kind === 'lesson' && meta.lessonId ? parseDrillLessonId(meta.lessonId) : null;
+      if (!meta || !parsed || parsed.drillId !== rawId) { setStartError('该练习会话无法恢复'); return; }
+      const source = parsed.drillId === CUSTOM_DRILL_ID ? meta.drill : openingDrillById(parsed.drillId);
+      if (!source) { setStartError('该练习的开局书已丢失，无法恢复'); return; }
+      setBusy(true);
+      setStatus('正在恢复练习…');
+      try {
+        const lesson = drillToLesson(source, parsed.color, parsed.startMode);
+        const snap = gs.getLessonSnapshot(sessionParam);
+        const difficulty = openingOpponentById(snap?.difficultyId ?? oppId);
+        gs.setActiveLesson(sessionParam);
+        setColor(parsed.color);
+        setStartMode(parsed.startMode);
+        setOppId(difficulty.id);
+        setPlayDrill(source);
+        setExpectedLessonId(lesson.id);
+        const s = await bootLessonSession(lesson, difficulty);
+        if (cancelled) return;
+        setStore(s);
+        setPhase('play');
+        setSearchParams({}, { replace: true });
+      } catch (e) {
+        if (!cancelled) setStartError(String(e).replace(/^Error:\s*/, ''));
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [sessionParam, rawId]);
 
   if (!drill) {
     return (
@@ -81,7 +120,11 @@ export function OpeningDrillPage() {
       const difficulty = openingOpponentById(oppId);
       setExpectedLessonId(lesson.id);
       const gs = useGameSessions.getState();
-      gs.newLesson(lesson.id, sessionLabel(ready.title, color, startMode, difficulty.label));
+      gs.newLesson(
+        lesson.id,
+        sessionLabel(ready.title, color, startMode, difficulty.label),
+        isCustom ? { drill: ready } : undefined,
+      );
       const s = await bootLessonSession(lesson, difficulty);
       setStore(s);
     } catch (e) {
@@ -134,11 +177,10 @@ export function OpeningDrillPage() {
               ))}
             </div>
             {!hasKey && <p className="mt-3 text-sm text-danger">自定义开局需要 API Key，请先回首页打开设置。</p>}
-            {startError && <p className="mt-3 text-sm text-danger" role="alert">{startError}</p>}
           </section>
         )}
 
-        {!isCustom && startError && <p className="mt-4 text-sm text-danger" role="alert">{startError}</p>}
+        {startError && <p className="mt-4 text-sm text-danger" role="alert">{startError}</p>}
 
         <section className="mt-8">
           <h2 className="mb-2 text-sm font-semibold text-ink">执棋方</h2>

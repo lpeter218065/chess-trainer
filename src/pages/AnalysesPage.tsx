@@ -8,6 +8,7 @@ import {
   type SessionKind,
   type SessionMeta,
 } from '../store/gameSessions';
+import { parseDrillLessonId } from '../lessons/drillLesson';
 
 type KindFilter = 'all' | SessionKind;
 
@@ -61,6 +62,11 @@ export function AnalysesPage() {
       return;
     }
     if (m.lessonId) {
+      const drill = parseDrillLessonId(m.lessonId);
+      if (drill) {
+        navigate(`/drill/${encodeURIComponent(drill.drillId)}?session=${encodeURIComponent(m.id)}`);
+        return;
+      }
       navigate(`/lesson/${encodeURIComponent(m.lessonId)}?session=${encodeURIComponent(m.id)}`);
     }
   };

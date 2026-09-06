@@ -56,4 +56,12 @@ describe('gameSessions', () => {
     expect(b).toBe(a);
     expect(useGameSessions.getState().getLessonSnapshot(b)?.intro).toBe('intro');
   });
+
+  it('newLesson 可附带自定义练习定义，保存在 meta 上', () => {
+    const drill = { id: 'custom', title: 'T', summary: '', theme: '', keyIdeas: [], principleIds: [], whiteTabiyaLine: ['e4', 'e5'], blackStartLine: ['e4'], opponentBook: [['e4', 'e5']], userPlies: 12 };
+    const id = useGameSessions.getState().newLesson('drill/custom/w/start', '自定义', { drill });
+    expect(useGameSessions.getState().metas[id].drill?.opponentBook).toEqual([['e4', 'e5']]);
+    const plain = useGameSessions.getState().newLesson('drill/london/w/start', '伦敦');
+    expect(useGameSessions.getState().metas[plain].drill).toBeUndefined();
+  });
 });

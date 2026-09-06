@@ -69,4 +69,14 @@ describe('customDrill', () => {
     await expect(generateCustomDrill('  ', 'w', llm)).rejects.toThrow(/填写/);
     await expect(generateCustomDrill('西西里', 'w', llm)).rejects.toThrow(/合法着法/);
   });
+
+  it('sanitizeOpponentBook 把 0-0 / 0-0-0 归一为 O-O / O-O-O', () => {
+    const book = sanitizeOpponentBook([['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', '0-0', 'Nf6', 'd3', '0-0']]);
+    expect(book[0][6]).toBe('O-O');
+    expect(book[0][9]).toBe('O-O');
+  });
+
+  it('tabiyaFromBookLine 主变不足 2 步时抛错，而不是回退到 d4 d5', () => {
+    expect(() => tabiyaFromBookLine(['e4'])).toThrow();
+  });
 });

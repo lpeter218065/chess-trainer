@@ -29,12 +29,16 @@ export function extractJsonObject(raw: string): unknown {
   return JSON.parse(text.slice(start, end + 1)) as unknown;
 }
 
+function normalizeSan(s: string): string {
+  return s.trim().replace(/^0-0-0$/, 'O-O-O').replace(/^0-0$/, 'O-O');
+}
+
 export function sanitizeOpponentBook(lines: unknown): string[][] {
   if (!Array.isArray(lines)) return [];
   const out: string[][] = [];
   for (const line of lines) {
     if (!Array.isArray(line) || line.length === 0) continue;
-    const sans = line.map((s) => String(s).trim()).filter(Boolean);
+    const sans = line.map((s) => normalizeSan(String(s))).filter(Boolean);
     if (sans.length === 0) continue;
     try {
       fenAfterSans(START_FEN, sans);
@@ -48,13 +52,13 @@ export function sanitizeOpponentBook(lines: unknown): string[][] {
 
 /** 从主变截出定式：白走后偶数步、黑走后奇数步 */
 export function tabiyaFromBookLine(line: string[]): { whiteTabiyaLine: string[]; blackStartLine: string[] } {
-  if (line.length < 1) throw new Error('开局书主变为空');
+  if (line.length < 2) throw new Error('开局书主变太短，请让模型给出至少两步');
   const blackLen = line.length % 2 === 1 ? Math.min(line.length, 5) : Math.max(1, Math.min(line.length - 1, 5));
   let whiteLen = line.length % 2 === 0 ? Math.min(line.length, 6) : Math.min(line.length - 1, 6);
   if (whiteLen < 2 && line.length >= 2) whiteLen = 2;
   return {
     blackStartLine: line.slice(0, blackLen),
-    whiteTabiyaLine: whiteLen >= 2 ? line.slice(0, whiteLen) : ['d4', 'd5'],
+    whiteTabiyaLine: line.slice(0, whiteLen),
   };
 }
 

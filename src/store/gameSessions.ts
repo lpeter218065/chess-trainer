@@ -4,6 +4,7 @@ import { createPlatformStorage, debounceStorage } from '../platform/storage';
 import type { MoveNodeId, MoveTree } from '../chess/moveTree';
 import type { FollowUpTurn } from '../llm/prompts';
 import type { DifficultyId } from '../engine/difficulty';
+import type { OpeningDrill } from '../lessons/openingDrills';
 import type { Angle } from '../llm/angles';
 import type { Phase, Round } from './session';
 import type { Outcome } from '../chess/result';
@@ -16,6 +17,8 @@ export interface SessionMeta {
   title: string;
   updatedAt: string;
   lessonId?: string;
+  /** 自定义开局练习的完整定义（模型生成的开局书），用于会话恢复 */
+  drill?: OpeningDrill;
 }
 
 export interface ExploreSnapshot {
@@ -80,7 +83,7 @@ interface GameSessionsState {
   deleteSession(id: string): void;
   newExplore(title?: string): string;
   flushPendingSave(): Promise<void>;
-  newLesson(lessonId: string, title: string): string;
+  newLesson(lessonId: string, title: string, extra?: { drill?: OpeningDrill }): string;
   getExploreSnapshot(id: string): ExploreSnapshot | null;
   getLessonSnapshot(id: string): LessonSnapshot | null;
 }
@@ -198,6 +201,7 @@ export const useGameSessions = create<GameSessionsState>()(
           title: title.trim() || prev.title,
           updatedAt: nowIso(),
           lessonId: data.lessonId,
+          ...(prev.drill ? { drill: prev.drill } : {}),
         };
         set({
           metas: { ...s.metas, [id]: meta },
@@ -263,7 +267,7 @@ export const useGameSessions = create<GameSessionsState>()(
         return id;
       },
 
-      newLesson(lessonId, title) {
+      newLesson(lessonId, title, extra) {
         const id = newId();
         const meta: SessionMeta = {
           id,
@@ -271,6 +275,7 @@ export const useGameSessions = create<GameSessionsState>()(
           title: title.trim() || '课程',
           updatedAt: nowIso(),
           lessonId,
+          ...(extra?.drill ? { drill: extra.drill } : {}),
         };
         set((s) => ({
           metas: { ...s.metas, [id]: meta },

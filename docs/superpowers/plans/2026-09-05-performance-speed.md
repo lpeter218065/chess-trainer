@@ -2753,3 +2753,48 @@ export async function setApiKey(key: string): Promise<void> {
 git add src/debug/install.ts src/llm/http.ts src/platform/secureStore.ts src/store/settings.ts tests/debugLog.test.ts tests/llmHttp.test.ts tests/secureStore.test.ts
 git commit -m "fix: 调试日志保留错误正文与插件可用性；NativeSse 缺失时回退 fetch；setApiKey 不再未处理拒绝"
 ```
+
+---
+
+### Task 18: 关键调试信息同时输出到原生控制台
+
+**Files:**
+- Modify: `src/debug/install.ts`
+- Test: `tests/debugLog.test.ts`
+
+背景：Capacitor 会把 WebView 的 `console.*` 转发到 Xcode / 模拟器日志（`⚡️  [log] - …`）。目前插件可用性与未处理拒绝只写进内存日志，连着 Xcode 或用 `simctl log stream` 时看不到，无法在没有真机交互的情况下诊断。
+
+**Interfaces:**
+- `installDebugHooks(deps?: { info?: (msg: string) => void; error?: (msg: string) => void })`：默认 `info = console.info.bind(console)`，`error` = hook 安装前保存的原始 `console.error`（不能用被 hook 后的 `console.error`，否则递归）。行为：`plugins …` 行同时 `info(...)`；`unhandledrejection` 与 `window.error` 的条目同时 `error('[debug] ' + text)`。`console.warn/error` 的 hook 不再回写控制台（它们本来就在控制台）。
+
+- [ ] **Step 1: 失败测试**（`tests/debugLog.test.ts`，`// @vitest-environment jsdom` 只对本文件；若文件已是 node 环境且其他用例不需要 DOM，则把新用例放到新文件 `tests/debugInstall.test.ts` 并加该注释）
+
+```tsx
+// @vitest-environment jsdom
+import { describe, it, expect, vi } from 'vitest';
+import { installDebugHooks } from '../src/debug/install';
+import { appDebugLog } from '../src/debug/log';
+
+describe('installDebugHooks 镜像到原生控制台', () => {
+  it('unhandledrejection 同时进入内存日志与 error 输出', async () => {
+    const error = vi.fn();
+    installDebugHooks({ info: vi.fn(), error });
+    const ev = new Event('unhandledrejection') as Event & { reason?: unknown };
+    Object.defineProperty(ev, 'reason', { value: new Error('boom') });
+    window.dispatchEvent(ev);
+    expect(appDebugLog.list().some((e) => e.source === 'promise' && e.message.includes('boom'))).toBe(true);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('boom'));
+  });
+});
+```
+
+- [ ] **Step 2: 实现**：按 Interfaces 改 `installDebugHooks`；`logPluginAvailability` 接收 `info` 回调并同时输出。多次调用 `installDebugHooks` 不得重复 hook `console`（用模块级 `installed` 标记，测试里第二次调用只更新回调）。
+
+- [ ] **Step 3: 验证与提交**
+
+`npm run typecheck && npm test` 全绿。
+
+```bash
+git add src/debug/install.ts tests/debugLog.test.ts tests/debugInstall.test.ts
+git commit -m "debug: 插件可用性与未处理错误同时输出到原生控制台"
+```

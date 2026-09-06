@@ -2798,3 +2798,99 @@ describe('installDebugHooks 镜像到原生控制台', () => {
 git add src/debug/install.ts tests/debugLog.test.ts tests/debugInstall.test.ts
 git commit -m "debug: 插件可用性与未处理错误同时输出到原生控制台"
 ```
+
+---
+
+### Task 19: 「测试连接」永不挂起（整体超时 + 取消 /models 响应流）
+
+**Files:**
+- Modify: `src/llm/client.ts`（`probeLlmConnection`、`testConnection`）
+- Test: `tests/probeLlm.test.ts`
+
+背景：2026-09-06 iPad 模拟器实测，某第三方代理对错误请求返回响应头后不关闭连接。原生 `URLSession` 一直等 body 结束，`streamChat` 的 `res.text()` / 首个 token 也一直等，「测试连接」卡在「测试中…」直到 180 s 请求超时。Web 端因浏览器 fetch 会立即收尾而不受影响。此外 `probeLlmConnection` 在 `/models` 返回 404 回退时，没有取消 GET 响应流，原生连接会泄漏。
+
+**Interfaces:**
+- `probeLlmConnection(cfg, fetchImpl?)` 签名不变，新增行为：整个过程有 15 s 硬超时（`AbortController` + `setTimeout`），超时抛 `LlmError('测试连接超时：服务在 15 秒内没有完成响应，请检查服务地址与网络')`；GET `/models` 传入该 `signal`；读到状态码后若要回退（404/405），先 `res.body?.cancel()` 再走 `testConnection`，并把同一个 `signal` 透传给 `testConnection`。
+- `testConnection(cfg, fetchImpl?, signal?)`：新增可选 `signal` 参数，透传给 `streamChat` 的 `opts.signal`；`gen.return()` 之外，`finally` 里 `controller`（若本函数自建）中止。默认无 signal 时行为不变。
+
+- [ ] **Step 1: 失败测试**（`tests/probeLlm.test.ts` 追加，复用顶部 `cfg`）
+
+```ts
+  it('服务挂起（响应流永不结束）时在超时内失败，而不是无限等待', async () => {
+    vi.useFakeTimers();
+    const fetchImpl: typeof fetch = (input, init) => new Promise((_resolve, reject) => {
+      // 永不 resolve；只在 abort 时 reject，模拟原生流被超时中止
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    });
+    const p = probeLlmConnection(cfg, fetchImpl);
+    const assertion = expect(p).rejects.toThrow(/超时/);
+    await vi.advanceTimersByTimeAsync(15000);
+    await assertion;
+    vi.useRealTimers();
+  });
+
+  it('/models 404 回退前取消 GET 响应流', async () => {
+    let cancelled = false;
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith('/models')) {
+        const body = new ReadableStream({ cancel() { cancelled = true; } });
+        return new Response(body, { status: 404 });
+      }
+      return new Response('data: {"choices":[{"delta":{"content":"好"}}]}\n\ndata: [DONE]\n\n', { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    };
+    await probeLlmConnection(cfg, fetchImpl);
+    expect(cancelled).toBe(true);
+  });
+```
+
+（vitest 已全局可用 `vi`；文件顶部 import 加 `vi`。现有三条 404 回退 / 200 用例仍需通过。）
+
+- [ ] **Step 2: 实现**
+
+`probeLlmConnection` 改为：
+
+```ts
+export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch = llmFetch): Promise<void> {
+  const url = modelsUrl(cfg.baseUrl);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    let res: Response;
+    try {
+      debugLog('info', 'llm', `probe ${url}`);
+      res = await fetchImpl(url, { method: 'GET', headers: { Authorization: `Bearer ${cfg.apiKey}`, Accept: 'application/json' }, signal: controller.signal });
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') throw new LlmError('测试连接超时：服务在 15 秒内没有完成响应，请检查服务地址与网络');
+      debugLog('error', 'llm', `probe fail ${(e as Error).message}`);
+      throw new LlmError(CORS_HINT);
+    }
+    if (res.status === 404 || res.status === 405) {
+      await res.body?.cancel().catch(() => {});
+      debugLog('info', 'llm', `probe /models ${res.status}，回退到最小对话`);
+      await testConnection(cfg, fetchImpl, controller.signal);
+      return;
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new LlmError(formatLlmHttpError(res.status, text, cfg), res.status);
+    }
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw new LlmError('测试连接超时：服务在 15 秒内没有完成响应，请检查服务地址与网络');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+```
+
+`testConnection` 加第三参 `signal?: AbortSignal`，`streamChat(..., { …, signal })`；把 `if ((e).name === 'AbortError')` 的超时文案交给调用方（这里只透传 signal，不自建 timer）。
+
+- [ ] **Step 3: 验证与提交**
+
+`npm run typecheck && npm test` 全绿。
+
+```bash
+git add src/llm/client.ts tests/probeLlm.test.ts
+git commit -m "fix: 测试连接加 15s 硬超时并取消 /models 响应流，避免服务挂起时无限等待"
+```

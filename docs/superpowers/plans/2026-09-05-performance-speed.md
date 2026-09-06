@@ -2533,3 +2533,72 @@ export function DebugOverlay() {
 git add src/store/settings.ts src/debug/DebugOverlay.tsx src/debug/DebugOverlayPanel.tsx src/components/SettingsDialog.tsx src/llm/nativeSse.ts tests/settings.test.ts tests/debugOverlay.test.tsx tests/nativeSse.test.ts
 git commit -m "feat: 调试手势改为设置开关（默认关），调试面板懒加载；原生 SSE 首包超时 120s"
 ```
+
+---
+
+### Task 16: 「测试连接」在没有 /models 路由的代理上回退到一次最小对话
+
+**Files:**
+- Modify: `src/llm/client.ts`（`probeLlmConnection`）
+- Test: `tests/probeLlm.test.ts`
+
+**Interfaces:**
+- `probeLlmConnection(cfg, fetchImpl?)` 签名不变。行为：先 `GET {base}/models`；`2xx` 即成功；`404` 或 `405` 时改用现有 `testConnection(cfg, fetchImpl)`（流式最小对话，拿到首个 token 即成功），其错误原样抛出；其他状态码沿用 `formatLlmHttpError`；网络层异常抛 `CORS_HINT`。
+
+背景：2026-09-06 冒烟发现用户实际使用的第三方代理 `.../openai/v1` 没有 `/models` 路由（返回 404 `Route ... not found`），导致「测试连接」永远失败，而 chat/completions 本身可用与否无从得知。
+
+- [ ] **Step 1: 失败测试**（`tests/probeLlm.test.ts` 追加；文件里已有 `cfg` 与假 `fetch` 的写法，复用）
+
+```ts
+  it('/models 404 时回退到最小对话，对话成功即成功', async () => {
+    const calls: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith('/models')) return new Response('{"error":"Not Found"}', { status: 404 });
+      const body = 'data: {"choices":[{"delta":{"content":"好"}}]}\n\ndata: [DONE]\n\n';
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+    };
+    await expect(probeLlmConnection(cfg, fetchImpl)).resolves.toBeUndefined();
+    expect(calls.some((u) => u.endsWith('/chat/completions'))).toBe(true);
+  });
+
+  it('/models 404 且对话 400 时抛出对话的错误', async () => {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith('/models')) return new Response('', { status: 404 });
+      return new Response('{"error":{"message":"Internal server error"}}', { status: 400 });
+    };
+    await expect(probeLlmConnection(cfg, fetchImpl)).rejects.toThrow(/400/);
+  });
+
+  it('/models 200 时不再发起对话', async () => {
+    const calls: string[] = [];
+    const fetchImpl: typeof fetch = async (input) => { calls.push(String(input)); return new Response('{"data":[]}', { status: 200 }); };
+    await probeLlmConnection(cfg, fetchImpl);
+    expect(calls).toHaveLength(1);
+  });
+```
+
+- [ ] **Step 2: 实现**
+
+`probeLlmConnection` 中 `if (!res.ok)` 分支前加：
+
+```ts
+  if (res.status === 404 || res.status === 405) {
+    debugLog('info', 'llm', `probe /models ${res.status}，回退到最小对话`);
+    await testConnection(cfg, fetchImpl);
+    return;
+  }
+```
+
+`testConnection` 定义在同文件更下方，函数声明会提升，无需移动。
+
+- [ ] **Step 3: 验证与提交**
+
+`npm run typecheck && npm test` 全绿。
+
+```bash
+git add src/llm/client.ts tests/probeLlm.test.ts
+git commit -m "fix: 测试连接在代理无 /models 路由时回退到最小对话"
+```

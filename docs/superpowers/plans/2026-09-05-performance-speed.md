@@ -2390,3 +2390,146 @@ export function __setSnapshotStorageForTests(s: SnapshotStorage) { current = s; 
 git add src/store/snapshotStorage.ts src/store/sessionSummary.ts src/store/gameSessions.ts src/store/sessionInstance.ts src/store/exploreInstance.ts src/pages/AnalysesPage.tsx src/pages/OpeningDrillPage.tsx tests/snapshotStorage.test.ts tests/gameSessions.test.ts tests/helpers/asyncBackend.ts
 git commit -m "perf: 会话快照按会话分文件异步存储（平台适配器），meta 内置摘要"
 ```
+
+---
+
+### Task 15: 调试手势加设置开关（默认关），覆盖层懒加载，原生 SSE 首包超时 120 s
+
+**Files:**
+- Modify: `src/store/settings.ts`（`debugGesturesEnabled: boolean`，默认 `false`，进 `partializeSettings`；`setDebugGesturesEnabled(v)`）
+- Modify: `src/debug/DebugOverlay.tsx`（拆成 `DebugOverlay` 宿主 + 懒加载的 `DebugOverlayPanel`）
+- Create: `src/debug/DebugOverlayPanel.tsx`（现有覆盖层的 JSX 与复制/清空/关闭逻辑原样搬入，默认导出）
+- Modify: `src/components/SettingsDialog.tsx`（开关）
+- Modify: `src/llm/nativeSse.ts`（`openTimeoutMs` 默认 `120_000`）
+- Tests: `tests/settings.test.ts`、`tests/debugOverlay.test.tsx`（新）、`tests/nativeSse.test.ts`（若有 60s 断言则改 120s）
+
+**Interfaces:**
+- Produces: `useSettings().debugGesturesEnabled`、`setDebugGesturesEnabled(v: boolean)`。`DebugOverlay` 行为：`chess-debug` 自定义事件（设置页「查看日志」按钮）**始终**有效；`chess-shake`、`devicemotion`、三指 `touchstart` 只在 `debugGesturesEnabled` 为 true 时监听；面板组件通过 `React.lazy(() => import('./DebugOverlayPanel'))` 在首次打开时才加载。`installDebugHooks()` 与日志缓冲保持常开（成本可忽略，按钮查看时才有内容）。
+
+- [ ] **Step 1: 失败测试**
+
+`tests/settings.test.ts` 追加：
+
+```ts
+  it('debugGesturesEnabled 默认关闭且被持久化', () => {
+    expect(useSettings.getState().debugGesturesEnabled).toBe(false);
+    useSettings.getState().setDebugGesturesEnabled(true);
+    expect(partializeSettings(useSettings.getState()).debugGesturesEnabled).toBe(true);
+    useSettings.getState().setDebugGesturesEnabled(false);
+  });
+```
+
+`tests/debugOverlay.test.tsx`（`// @vitest-environment jsdom`，复用 `tests/helpers/renderProbe.tsx` 的 `installDomPolyfills`）：
+
+```tsx
+// @vitest-environment jsdom
+import { describe, it, expect, beforeAll, afterEach, beforeEach } from 'vitest';
+import { act, render, cleanup, screen } from '@testing-library/react';
+import { installDomPolyfills } from './helpers/renderProbe';
+import { DebugOverlay } from '../src/debug/DebugOverlay';
+import { useSettings } from '../src/store/settings';
+import { requestDebugOverlay } from '../src/debug/install';
+
+function threeFingerTouch() {
+  const ev = new Event('touchstart', { bubbles: true }) as Event & { touches: unknown[] };
+  Object.defineProperty(ev, 'touches', { value: [{}, {}, {}] });
+  window.dispatchEvent(ev);
+}
+const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+
+describe('DebugOverlay 手势开关', () => {
+  beforeAll(() => installDomPolyfills());
+  beforeEach(() => useSettings.getState().setDebugGesturesEnabled(false));
+  afterEach(() => cleanup());
+
+  it('开关关闭时三指不弹出，「查看日志」事件仍弹出', async () => {
+    render(<DebugOverlay />);
+    act(() => threeFingerTouch());
+    await flush();
+    expect(screen.queryByText('关闭')).toBeNull();
+    act(() => requestDebugOverlay(true));
+    await flush();
+    expect(await screen.findByText('关闭')).toBeTruthy();
+  });
+
+  it('开关打开时三指弹出', async () => {
+    useSettings.getState().setDebugGesturesEnabled(true);
+    render(<DebugOverlay />);
+    act(() => threeFingerTouch());
+    await flush();
+    expect(await screen.findByText('关闭')).toBeTruthy();
+  });
+});
+```
+
+Run 两个文件 → FAIL。
+
+- [ ] **Step 2: 实现**
+
+`settings.ts`：state 增加 `debugGesturesEnabled: false` 与 `setDebugGesturesEnabled: (v) => set({ debugGesturesEnabled: v })`；`partializeSettings` 返回对象加 `debugGesturesEnabled: s.debugGesturesEnabled`；接口同步。
+
+`DebugOverlayPanel.tsx`：把 `DebugOverlay` 里 `if (!open) return null;` 之后的整段 JSX 搬进来，签名 `export default function DebugOverlayPanel({ entries, copied, onCopy, onClear, onClose })`，或者更简单：面板自己读 `appDebugLog.list()`、自己管 `copied`，只接 `onClose`。选后者。
+
+`DebugOverlay.tsx`：
+
+```tsx
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { appDebugLog } from './log';
+import { createShakeDetector, motionMagnitudeG } from './shake';
+import { isNative } from '../platform';
+import { useSettings } from '../store/settings';
+
+const Panel = lazy(() => import('./DebugOverlayPanel'));
+
+export function DebugOverlay() {
+  const [open, setOpen] = useState(false);
+  const [, setTick] = useState(0);
+  const gestures = useSettings((s) => s.debugGesturesEnabled);
+
+  useEffect(() => appDebugLog.subscribe(() => setTick((n) => n + 1)), []);
+
+  // 「查看日志」按钮：始终有效
+  useEffect(() => {
+    const onDebug = (e: Event) => setOpen((e as CustomEvent<{ open?: boolean }>).detail?.open ?? true);
+    window.addEventListener('chess-debug', onDebug);
+    return () => window.removeEventListener('chess-debug', onDebug);
+  }, []);
+
+  // 摇一摇 / 三指：只在开关打开时监听
+  useEffect(() => {
+    if (!gestures) return;
+    const toggle = () => setOpen((v) => !v);
+    // ……现有的 chess-shake、devicemotion（!isNative()）、三指 touchstart/touchend 监听原样搬入，清理函数对应移除
+    return () => { /* 移除全部 */ };
+  }, [gestures]);
+
+  if (!open) return null;
+  return (
+    <Suspense fallback={null}>
+      <Panel onClose={() => setOpen(false)} />
+    </Suspense>
+  );
+}
+```
+
+`SettingsDialog.tsx`：在「查看日志」按钮旁加
+
+```tsx
+<label className="flex items-center gap-2 text-sm">
+  <input type="checkbox" checked={debugGesturesEnabled} onChange={(e) => setDebugGesturesEnabled(e.target.checked)} />
+  启用调试手势（摇一摇 / 三指触屏）
+</label>
+```
+
+`nativeSse.ts`：`const openTimeoutMs = opts?.openTimeoutMs ?? 120_000;`，注释说明高推理强度模型首包可能超过 60 s。
+
+- [ ] **Step 3: 验证**
+
+`npm run typecheck && npm test` 全绿；`npm run build` 出现独立的 `DebugOverlayPanel-*.js` chunk，主 chunk 比 303.97 kB 小。
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/store/settings.ts src/debug/DebugOverlay.tsx src/debug/DebugOverlayPanel.tsx src/components/SettingsDialog.tsx src/llm/nativeSse.ts tests/settings.test.ts tests/debugOverlay.test.tsx tests/nativeSse.test.ts
+git commit -m "feat: 调试手势改为设置开关（默认关），调试面板懒加载；原生 SSE 首包超时 120s"
+```

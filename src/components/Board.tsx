@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess, type Square } from 'chess.js';
 import type { BoardAnnotations } from '../chess/annotations';
@@ -45,7 +45,7 @@ function tapInputs(fen: string): {
   return { legalMoves, ownPieceSquares };
 }
 
-export function Board({
+function BoardImpl({
   fen,
   orientation,
   interactive,
@@ -190,3 +190,5 @@ export function Board({
     </div>
   );
 }
+
+export const Board = memo(BoardImpl);

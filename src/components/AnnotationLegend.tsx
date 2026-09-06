@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { BoardAnnotations } from '../chess/annotations';
 import { ARROW_COLORS } from '../chess/annotations';
 
@@ -9,7 +10,7 @@ const ITEMS = [
   { color: ARROW_COLORS.hint, label: '计划 / 战术' },
 ] as const;
 
-export function AnnotationLegend({ annotations, showHint }: { annotations: BoardAnnotations | null; showHint: boolean }) {
+function AnnotationLegendImpl({ annotations, showHint }: { annotations: BoardAnnotations | null; showHint: boolean }) {
   if (!annotations && !showHint) return null;
   const active = new Set(annotations?.arrows.map((a) => a.color) ?? []);
   if (showHint) active.add(ARROW_COLORS.hint);
@@ -26,3 +27,5 @@ export function AnnotationLegend({ annotations, showHint }: { annotations: Board
     </div>
   );
 }
+
+export const AnnotationLegend = memo(AnnotationLegendImpl);

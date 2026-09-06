@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import type { Quality } from '../chess/quality';
 import { QUALITY_LABEL } from '../chess/quality';
 import type { MoveNodeId, MoveTree } from '../chess/moveTree';
@@ -8,7 +8,7 @@ const QUALITY_CLASS: Record<Quality, string> = {
   best: 'text-emerald-700', good: 'text-green-600', inaccuracy: 'text-yellow-600', mistake: 'text-orange-600', blunder: 'text-red-600',
 };
 
-export function MoveList({
+function MoveListImpl({
   history,
   startMoveNumber,
   blackFirst,
@@ -247,3 +247,5 @@ export function VariationMoveList({
     </div>
   );
 }
+
+export const MoveList = memo(MoveListImpl);

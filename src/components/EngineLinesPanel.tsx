@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { MiniBoard } from './MiniBoard';
 import { fenAfterUciPlies } from '../chess/notation';
 
@@ -11,7 +11,7 @@ export interface PvLineData {
 }
 
 /** 单条 PV：默认停在第 1 步，不自动连播 */
-export function PvLineCard({
+function PvLineCardImpl({
   baseFen,
   line,
   orientation,
@@ -81,7 +81,9 @@ export function PvLineCard({
   );
 }
 
-export function EngineLinesPanel({
+export const PvLineCard = memo(PvLineCardImpl);
+
+function EngineLinesPanelImpl({
   baseFen,
   lines,
   orientation,
@@ -113,3 +115,5 @@ export function EngineLinesPanel({
     </div>
   );
 }
+
+export const EngineLinesPanel = memo(EngineLinesPanelImpl);

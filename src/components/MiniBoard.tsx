@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Chessboard } from 'react-chessboard';
 
 /**
  * 小棋盘：用 ResizeObserver 量出容器内最大正方形边长，
  * 避免 compact 布局下 h-full + max-w 把棋盘拉成非正方形（子力变形）。
  */
-export function MiniBoard({
+function MiniBoardImpl({
   fen,
   orientation,
   lastMove,
@@ -68,3 +68,5 @@ export function MiniBoard({
     </div>
   );
 }
+
+export const MiniBoard = memo(MiniBoardImpl);

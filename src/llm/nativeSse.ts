@@ -1,3 +1,5 @@
+import { debugLog } from '../debug/log';
+
 export type NativeSseOpen = { id: string; status: number; headers?: Record<string, string> };
 export type NativeSseChunk = { id: string; chunk: string };
 export type NativeSseEnd = { id: string };
@@ -27,7 +29,11 @@ function headerRecord(init?: HeadersInit): Record<string, string> {
   return out;
 }
 
-export function nativeSseFetch(plugin: NativeSsePlugin): typeof fetch {
+export function nativeSseFetch(
+  plugin: NativeSsePlugin,
+  opts?: { openTimeoutMs?: number },
+): typeof fetch {
+  const openTimeoutMs = opts?.openTimeoutMs ?? 60_000;
   return async (input, init) => {
     if (init?.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
@@ -35,6 +41,10 @@ export function nativeSseFetch(plugin: NativeSsePlugin): typeof fetch {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     const method = init?.method ?? 'GET';
     const headers = headerRecord(init?.headers);
+    const hasHeader = (name: string) => Object.keys(headers).some((k) => k.toLowerCase() === name);
+    headers['Accept-Encoding'] = 'identity';
+    if (!hasHeader('accept')) headers['Accept'] = 'text/event-stream';
+    if (!hasHeader('cache-control')) headers['Cache-Control'] = 'no-cache';
     const body = typeof init?.body === 'string' ? init.body : undefined;
 
     const encoder = new TextEncoder();
@@ -44,6 +54,7 @@ export function nativeSseFetch(plugin: NativeSsePlugin): typeof fetch {
     let notify: (() => void) | null = null;
 
     let streamId = '';
+    let cancelled = false;
     const pendingOpen = new Map<string, NativeSseOpen>();
     let resolveOpen: (e: NativeSseOpen) => void = () => {};
     let rejectOpen: (e: Error) => void = () => {};
@@ -60,29 +71,41 @@ export function nativeSseFetch(plugin: NativeSsePlugin): typeof fetch {
     };
 
     const handles: ListenerHandle[] = [];
+    let chunkBytes = 0;
+    let chunkCount = 0;
     handles.push(await Promise.resolve(plugin.addListener('open', (e) => {
       pendingOpen.set(e.id, e);
+      debugLog('info', 'sse', `open ${e.status} ${e.headers?.['content-type'] ?? e.headers?.['Content-Type'] ?? ''}`);
       finishOpen(e);
     })));
     handles.push(await Promise.resolve(plugin.addListener('chunk', (e) => {
       if (streamId && e.id !== streamId) return;
+      chunkCount += 1;
+      chunkBytes += e.chunk.length;
+      if (chunkCount === 1 || chunkCount % 20 === 0) {
+        debugLog('debug', 'sse', `chunk#${chunkCount} +${e.chunk.length}B total=${chunkBytes}B`);
+      }
       queue.push(encoder.encode(e.chunk));
       notify?.();
     })));
     handles.push(await Promise.resolve(plugin.addListener('end', (e) => {
       if (streamId && e.id !== streamId) return;
+      debugLog('info', 'sse', `end chunks=${chunkCount} bytes=${chunkBytes}`);
       ended = true;
       notify?.();
     })));
     handles.push(await Promise.resolve(plugin.addListener('error', (e) => {
       if (streamId && e.id !== streamId) return;
+      debugLog('error', 'sse', e.message);
       failed = new Error(e.message);
       if (!opened) rejectOpen(failed);
       notify?.();
     })));
 
+    debugLog('info', 'sse', `start ${method} ${url}`);
     const { id } = await plugin.start({ url, method, headers, body });
     streamId = id;
+    debugLog('debug', 'sse', `id ${id.slice(0, 8)}`);
     const already = pendingOpen.get(id);
     if (already) finishOpen(already);
 
@@ -94,17 +117,34 @@ export function nativeSseFetch(plugin: NativeSsePlugin): typeof fetch {
     };
     init?.signal?.addEventListener('abort', onAbort, { once: true });
 
-    const open = await openP;
+    const removeListeners = () => {
+      void Promise.all(handles.map((h) => h.remove().catch(() => {})));
+    };
+    const open = await Promise.race([
+      openP,
+      new Promise<never>((_, reject) => {
+        const t = setTimeout(() => {
+          void plugin.cancel({ id });
+          removeListeners();
+          debugLog('error', 'sse', `open timeout ${openTimeoutMs}ms`);
+          reject(new Error(`原生 SSE 等待响应超时（${openTimeoutMs}ms）`));
+        }, openTimeoutMs);
+        void openP.then(() => clearTimeout(t), () => clearTimeout(t));
+      }),
+    ]);
     const stream = new ReadableStream<Uint8Array>({
       pull(controller) {
+        if (cancelled) return;
         while (queue.length > 0) {
           controller.enqueue(queue.shift()!);
         }
         if (failed) {
+          removeListeners();
           controller.error(failed);
           return;
         }
         if (ended) {
+          removeListeners();
           controller.close();
           return;
         }
@@ -114,14 +154,23 @@ export function nativeSseFetch(plugin: NativeSsePlugin): typeof fetch {
             resolve();
           };
         }).then(() => {
+          if (cancelled) return;
           while (queue.length > 0) controller.enqueue(queue.shift()!);
-          if (failed) controller.error(failed);
-          else if (ended) controller.close();
+          if (failed) {
+            removeListeners();
+            controller.error(failed);
+          } else if (ended) {
+            removeListeners();
+            controller.close();
+          }
         });
       },
       cancel() {
+        cancelled = true;
+        ended = true;
+        notify?.();
         void plugin.cancel({ id });
-        void Promise.all(handles.map((h) => h.remove()));
+        removeListeners();
       },
     });
     return new Response(stream, { status: open.status, headers: open.headers ?? {} });

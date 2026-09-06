@@ -6,12 +6,15 @@ const cfg = { baseUrl: 'https://api.example.com/v1/', apiKey: 'sk-test', model: 
 describe('probeLlmConnection', () => {
   it('GET /models 成功', async () => {
     let url = '';
-    const fetchImpl: typeof fetch = async (u) => {
+    let accept = '';
+    const fetchImpl: typeof fetch = async (u, init) => {
       url = String(u);
+      accept = new Headers(init?.headers).get('Accept') ?? '';
       return new Response('{"data":[]}', { status: 200 });
     };
     await probeLlmConnection(cfg, fetchImpl);
     expect(url).toBe('https://api.example.com/v1/models');
+    expect(accept).toBe('application/json');
   });
 
   it('HTTP 错误带状态码', async () => {

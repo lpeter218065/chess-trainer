@@ -22,6 +22,7 @@ import { evalAfterFromLines } from '../chess/evalFromLines';
 import { START_FEN, parseFen, parsePgn } from '../chess/pgn';
 import { createDebouncer, ANALYZE_DEBOUNCE_MS, LLM_DEBOUNCE_MS } from '../utils/debounce';
 import { createStreamFlusher } from '../utils/streamFlusher';
+import { debugLog } from '../debug/log';
 import {
   appendChild,
   createEmptyTree,
@@ -219,6 +220,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
         };
       });
 
+      debugLog('info', 'explore', `commentary ply=${ply}`);
       const flusher = createStreamFlusher((text) => set({ commentary: text, commentaryPly: ply }));
       try {
         if (!(await ensureAnalysisFor(fen, ply, ac.signal))) {
@@ -266,9 +268,11 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
           }));
         }
       } catch (e) {
+        debugLog('error', 'explore', `commentary ${(e as Error).message}`);
         if (!ac.signal.aborted) set({ llmError: `讲解失败：${(e as Error).message}` });
       } finally {
         flusher.cancel();
+        debugLog('info', 'explore', `commentary done streaming=${llmAbort === ac} chars=${flusher.text.length}`);
         if (llmAbort === ac) {
           llmAbort = null;
           set({ llmStreaming: false, assessmentStreaming: false });

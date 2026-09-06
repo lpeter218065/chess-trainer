@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useSettings } from '../store/settings';
 import { probeLlmConnection } from '../llm/client';
 import { DIFFICULTIES, type DifficultyId } from '../engine/difficulty';
+import { requestDebugOverlay } from '../debug/install';
+import { debugLog } from '../debug/log';
 
 export function SettingsDialog({ onClose }: { onClose(): void }) {
   const { llm, temperature, difficultyId, setLlm, setTemperature, setDifficultyId } = useSettings();
@@ -27,14 +29,27 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
     setStatus('已恢复为 .env.local / 默认配置。');
   };
   const test = async () => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
     setStatus('测试中…');
-    try { await probeLlmConnection(llm); setStatus('连接成功。'); }
-    catch (e) { setStatus(`失败：${(e as Error).message}`); }
+    debugLog('info', 'settings', 'probe start');
+    try {
+      await probeLlmConnection(llm);
+      setStatus('连接成功。');
+      debugLog('info', 'settings', 'probe ok');
+    } catch (e) {
+      const msg = (e as Error).message;
+      debugLog('error', 'settings', `probe ${msg}`);
+      setStatus(`失败：${msg}`);
+    }
   };
   return (
-    <div className="fixed inset-0 z-10 flex items-center justify-center bg-ink/50 p-4" onClick={onClose} role="presentation">
+    <div
+      className="fixed inset-0 z-10 flex items-end justify-center overflow-x-hidden overflow-y-auto overscroll-contain bg-ink/50 p-4 sm:items-center"
+      onClick={onClose}
+      role="presentation"
+    >
       <div
-        className="w-full max-w-md rounded-2xl bg-paper p-6 shadow-xl"
+        className="max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-md overflow-x-hidden overflow-y-auto rounded-2xl bg-paper p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -73,9 +88,17 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <button type="button" className="btn btn-primary" onClick={() => void test()}>测试连接</button>
           <button type="button" className="btn" onClick={resetFromEnv}>恢复 .env 配置</button>
+          <button type="button" className="btn" onClick={() => requestDebugOverlay(true)}>查看日志</button>
           <button type="button" className="btn" onClick={onClose}>关闭</button>
         </div>
-        {status && <p className="mt-3 text-sm text-muted" role="status">{status}</p>}
+        {status && (
+          <p
+            className={`mt-3 max-w-full min-w-0 text-sm break-words [overflow-wrap:anywhere] ${status.startsWith('失败') ? 'text-danger' : 'text-muted'}`}
+            role="status"
+          >
+            {status}
+          </p>
+        )}
       </div>
     </div>
   );

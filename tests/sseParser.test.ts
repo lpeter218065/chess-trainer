@@ -11,9 +11,24 @@ describe('createSseParser', () => {
     expect(p.push('data: {"a"')).toEqual([]);
     expect(p.push(':1}\n\n')).toEqual(['{"a":1}']);
   });
-  it('忽略注释和 [DONE]', () => {
+  it('忽略注释；[DONE] 标记流结束', () => {
     const p = createSseParser();
     expect(p.push(': ping\n\ndata: [DONE]\n\n')).toEqual([]);
+    expect(p.done).toBe(true);
+  });
+  it('finish_reason 非空也标记流结束，并仍产出该事件', () => {
+    const p = createSseParser();
+    expect(p.push('data: {"choices":[{"delta":{"content":"好"},"finish_reason":"stop"}]}\n\n')).toEqual([
+      '{"choices":[{"delta":{"content":"好"},"finish_reason":"stop"}]}',
+    ]);
+    expect(p.done).toBe(true);
+  });
+  it('finish_reason 为 null 不结束', () => {
+    const p = createSseParser();
+    expect(p.push('data: {"choices":[{"delta":{"content":"好"},"finish_reason":null}]}\n\n')).toEqual([
+      '{"choices":[{"delta":{"content":"好"},"finish_reason":null}]}',
+    ]);
+    expect(p.done).toBe(false);
   });
   it('flush 输出未以空行结尾的尾部', () => {
     const p = createSseParser();

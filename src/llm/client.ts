@@ -1,5 +1,6 @@
 import { createSseParser, extractDelta } from './sseParser';
 import { llmFetch } from './http';
+import { debugLog } from '../debug/log';
 
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
@@ -75,11 +76,16 @@ export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts:
   const rawEffort = opts.reasoningEffort ?? cfg.reasoningEffort;
   // gpt-5.6-sol 等不支持 minimal，统一抬到 low
   const effort = rawEffort === 'minimal' ? 'low' : rawEffort;
+  debugLog('info', 'llm', `stream ${url} model=${cfg.model} effort=${effort ?? '-'} max=${opts.maxTokens ?? '-'}`);
   let res: Response;
   try {
     res = await fetchImpl(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cfg.apiKey}`,
+        Accept: 'text/event-stream',
+      },
       body: JSON.stringify({
         model: cfg.model,
         messages,
@@ -92,31 +98,46 @@ export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts:
     });
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
+    debugLog('error', 'llm', `fetch fail ${(e as Error).message}`);
     throw new LlmError(`网络请求失败：${(e as Error).message}。若为第三方服务，可能是不允许浏览器跨域访问（CORS）。`);
   }
+  debugLog('info', 'llm', `http ${res.status} ${res.headers.get('content-type') ?? ''}`);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
+    debugLog('error', 'llm', `http body ${text.slice(0, 240)}`);
     throw new LlmError(formatLlmHttpError(res.status, text, cfg), res.status);
   }
   if (!res.body) throw new LlmError('响应没有正文');
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   const parser = createSseParser();
+  let yielded = 0;
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
       for (const payload of parser.push(decoder.decode(value, { stream: true }))) {
         const d = extractDelta(payload);
-        if (d) yield d;
+        if (d) {
+          yielded += 1;
+          if (yielded === 1) debugLog('info', 'llm', `first delta ${d.length} chars`);
+          yield d;
+        }
+      }
+      if (parser.done) {
+        debugLog('info', 'llm', 'parser done');
+        await reader.cancel().catch(() => {});
+        break;
       }
     }
     for (const payload of parser.flush()) {
       const d = extractDelta(payload);
       if (d) yield d;
     }
+    debugLog('info', 'llm', `${parser.done ? 'done' : 'reader'} tokens=${yielded}`);
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
+    debugLog('error', 'llm', `stream ${(e as Error).message}`);
     throw e;
   } finally {
     reader.releaseLock();
@@ -134,11 +155,13 @@ export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch
   const url = modelsUrl(cfg.baseUrl);
   let res: Response;
   try {
+    debugLog('info', 'llm', `probe ${url}`);
     res = await fetchImpl(url, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${cfg.apiKey}` },
+      headers: { Authorization: `Bearer ${cfg.apiKey}`, Accept: 'application/json' },
     });
-  } catch {
+  } catch (e) {
+    debugLog('error', 'llm', `probe fail ${(e as Error).message}`);
     throw new LlmError(CORS_HINT);
   }
   if (!res.ok) {

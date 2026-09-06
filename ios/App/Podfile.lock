@@ -66,10 +66,10 @@ SPEC CHECKSUMS:
   CapacitorKeyboard: a2e0869edd229490ce36aed2549c0d6b95e27ee8
   CapacitorPreferences: 69d9991307507aeab8ef8019c10b9babfda0e9ca
   CapacitorStatusBar: 416e9e53fd6397e668d4a181cd2131617d949bd6
-  ChessTrainerNativeSse: 12e6a8cbcf892e8dead4f41966e1064b5c9dadbd
+  ChessTrainerNativeSse: 02a42c48d24c42d436359439de95a86c30bfdf4c
   IONFilesystemLib: 21a63377696b2d8fab5632ecfb7d2ac67bddb68a
   KeychainSwift: 4a71a45c802fd9e73906457c2dcbdbdc06c9419d
 
-PODFILE CHECKSUM: d6f400d5774779a74089912ffb0fd9cdca234fc9
+PODFILE CHECKSUM: 0b3e71f119f37a56a3b4a0f7780302b7efca9c4e
 
 COCOAPODS: 1.17.0

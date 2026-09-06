@@ -11,11 +11,24 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
   ]
 
   private lazy var session: URLSession = {
-    URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+    let config = URLSessionConfiguration.ephemeral
+    config.requestCachePolicy = .reloadIgnoringLocalCacheData
+    config.timeoutIntervalForRequest = 180
+    config.timeoutIntervalForResource = 300
+    config.httpAdditionalHeaders = [
+      "Accept-Encoding": "identity",
+      "Accept": "text/event-stream",
+      "Cache-Control": "no-cache",
+    ]
+    let queue = OperationQueue()
+    queue.name = "dev.xu.chesstrainer.nativesse"
+    queue.maxConcurrentOperationCount = 1
+    return URLSession(configuration: config, delegate: self, delegateQueue: queue)
   }()
 
   private var tasks: [String: URLSessionDataTask] = [:]
   private var idByTask: [Int: String] = [:]
+  private var utf8Remainder: [String: Data] = [:]
   private let lock = NSLock()
 
   @objc func start(_ call: CAPPluginCall) {
@@ -35,9 +48,17 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
 
     var request = URLRequest(url: url)
     request.httpMethod = method
-    request.timeoutInterval = 120
+    request.timeoutInterval = 300
+    request.cachePolicy = .reloadIgnoringLocalCacheData
     for (key, value) in headers {
       request.setValue(value, forHTTPHeaderField: key)
+    }
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    if request.value(forHTTPHeaderField: "Accept") == nil {
+      request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+    }
+    if request.value(forHTTPHeaderField: "Cache-Control") == nil {
+      request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
     }
     if let body {
       request.httpBody = Data(body.utf8)
@@ -47,12 +68,11 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
     lock.lock()
     tasks[id] = task
     idByTask[task.taskIdentifier] = id
+    utf8Remainder[id] = Data()
     lock.unlock()
 
     call.resolve(["id": id])
-    DispatchQueue.global(qos: .userInitiated).async {
-      task.resume()
-    }
+    task.resume()
   }
 
   @objc func cancel(_ call: CAPPluginCall) {
@@ -65,6 +85,7 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
     if let task {
       idByTask.removeValue(forKey: task.taskIdentifier)
     }
+    utf8Remainder.removeValue(forKey: id)
     lock.unlock()
     task?.cancel()
     call.resolve()
@@ -77,30 +98,62 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
     if let http = response as? HTTPURLResponse {
       status = http.statusCode
       for (key, value) in http.allHeaderFields {
-        headers[String(describing: key)] = String(describing: value)
+        headers[String(describing: key).lowercased()] = String(describing: value)
       }
     }
-    notify("open", ["id": id, "status": status, "headers": headers])
+    notify("open", ["id": id, "status": status, "headers": headers], retain: true)
     completionHandler(.allow)
   }
 
   public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
     let id = streamId(for: dataTask)
-    let chunk = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
-    notify("chunk", ["id": id, "chunk": chunk])
+    let chunk = decodeUtf8(id: id, incoming: data)
+    if !chunk.isEmpty {
+      notify("chunk", ["id": id, "chunk": chunk], retain: false)
+    }
   }
 
   public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
     let id = streamId(for: task)
     lock.lock()
+    let tail = utf8Remainder.removeValue(forKey: id) ?? Data()
     tasks.removeValue(forKey: id)
     idByTask.removeValue(forKey: task.taskIdentifier)
     lock.unlock()
+    if !tail.isEmpty {
+      let leftover = String(decoding: tail, as: UTF8.self)
+      if !leftover.isEmpty {
+        notify("chunk", ["id": id, "chunk": leftover], retain: false)
+      }
+    }
     if let error, (error as NSError).code != NSURLErrorCancelled {
-      notify("error", ["id": id, "message": error.localizedDescription])
+      notify("error", ["id": id, "message": error.localizedDescription], retain: true)
       return
     }
-    notify("end", ["id": id])
+    notify("end", ["id": id], retain: true)
+  }
+
+  private func decodeUtf8(id: String, incoming: Data) -> String {
+    lock.lock()
+    var buf = utf8Remainder[id] ?? Data()
+    buf.append(incoming)
+    if let s = String(data: buf, encoding: .utf8) {
+      utf8Remainder[id] = Data()
+      lock.unlock()
+      return s
+    }
+    var end = buf.count
+    while end > 0 && buf.count - end <= 4 {
+      end -= 1
+      if let s = String(data: buf.prefix(end), encoding: .utf8) {
+        utf8Remainder[id] = Data(buf.suffix(buf.count - end))
+        lock.unlock()
+        return s
+      }
+    }
+    utf8Remainder[id] = buf
+    lock.unlock()
+    return ""
   }
 
   private func streamId(for task: URLSessionTask) -> String {
@@ -109,9 +162,9 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
     return idByTask[task.taskIdentifier] ?? ""
   }
 
-  private func notify(_ event: String, _ data: [String: Any]) {
+  private func notify(_ event: String, _ data: [String: Any], retain: Bool) {
     DispatchQueue.main.async {
-      self.notifyListeners(event, data: data)
+      self.notifyListeners(event, data: data, retainUntilConsumed: retain)
     }
   }
 }

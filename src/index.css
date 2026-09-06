@@ -18,11 +18,15 @@
 html {
   scroll-behavior: smooth;
   -webkit-tap-highlight-color: transparent;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
   min-height: 100dvh;
+  max-width: 100%;
+  overflow-x: hidden;
   background-color: var(--color-paper);
   background-image:
     radial-gradient(1100px 520px at 8% -12%, color-mix(in srgb, var(--color-felt) 11%, transparent), transparent 55%),
@@ -115,14 +119,28 @@ button:disabled {
   border-color: transparent;
   background: color-mix(in srgb, var(--color-cream) 45%, transparent);
 }
+#root {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+[role="alert"],
+[role="status"] {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .field {
   min-height: 2.75rem;
   width: 100%;
+  min-width: 0;
   border-radius: 0.5rem;
   border: 1px solid var(--color-line);
   background: #fff;
   padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
+  font-size: 16px;
   color: var(--color-ink);
   outline: none;
   transition: border-color 180ms ease;

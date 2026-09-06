@@ -2602,3 +2602,154 @@ git commit -m "feat: 调试手势改为设置开关（默认关），调试面�
 git add src/llm/client.ts tests/probeLlm.test.ts
 git commit -m "fix: 测试连接在代理无 /models 路由时回退到最小对话"
 ```
+
+---
+
+### Task 17: 调试日志保留错误正文；启动时记录原生插件可用性；NativeSse 缺失时回退 fetch；setApiKey 不再产生未处理拒绝
+
+**Files:**
+- Modify: `src/debug/install.ts`（导出 `stringifyArg`；启动时插件可用性日志）
+- Modify: `src/llm/http.ts`（`llmFetch` 在插件不可用时回退）
+- Modify: `src/platform/secureStore.ts`（`setApiKey` 的 `await plugin()` 移入 try）
+- Modify: `src/store/settings.ts`（`void setApiKey(...)` 加 `.catch`）
+- Tests: `tests/debugLog.test.ts`、`tests/llmHttp.test.ts`、`tests/secureStore.test.ts`
+
+背景：2026-09-06 iPad 真机日志只有 `promise error @capacitor://localhost/assets/index-*.js:12:48496`，没有错误正文。原因一：WebKit 的 `Error.stack` 不含 message 行，`stringifyArg` 用 `stack || message` 丢掉了正文。原因二：该位置经 sourcemap 对应 `@capacitor/core` 的 `"<Plugin>.<method>()" is not implemented on ios` 异常，说明某个原生插件在当前安装包里缺失或方法名不匹配，但日志无法判断是哪一个。
+
+**Interfaces:**
+- `stringifyArg(v: unknown): string`：Error → `${name}: ${message}`，若 `stack` 不含 message 则追加换行 + stack；含 `code` 字段（CapacitorException）时附 ` [code]`。
+- `installDebugHooks()`：原生端启动时追加一条 `debugLog('info','app','plugins NativeSse=yes SecureStorage=no …')`，名单：`NativeSse`、`SecureStorage`、`Preferences`、`Filesystem`、`App`、`Keyboard`、`StatusBar`，用 `Capacitor.isPluginAvailable(name)`。Web 端不打这条。
+- `createLlmFetch(deps: { isNative(): boolean; isPluginAvailable(name: string): boolean; nativeFetch(): Promise<typeof fetch>; webFetch: typeof fetch }): typeof fetch`；`llmFetch = createLlmFetch({ isNative, isPluginAvailable: (n) => Capacitor.isPluginAvailable(n), nativeFetch: async () => { const { getNativeSsePlugin, nativeSseFetch } = await import('./nativeSse'); return nativeSseFetch(await getNativeSsePlugin()); }, webFetch: fetch })`。原生但 `NativeSse` 不可用时 `debugLog('warn','llm','NativeSse 插件不可用，回退 fetch')` 并用 `webFetch`。
+
+- [ ] **Step 1: 失败测试**
+
+`tests/debugLog.test.ts` 追加：
+
+```ts
+import { stringifyArg } from '../src/debug/install';
+
+describe('stringifyArg', () => {
+  it('WebKit 风格 stack 不含 message 时仍保留正文', () => {
+    const e = new Error('"NativeSse.start()" is not implemented on ios');
+    (e as Error & { code?: string }).code = 'UNIMPLEMENTED';
+    e.stack = 'wrapper@capacitor://localhost/assets/index-abc.js:12:48496\n@capacitor://localhost/assets/index-abc.js:12:100';
+    const s = stringifyArg(e);
+    expect(s).toContain('is not implemented on ios');
+    expect(s).toContain('UNIMPLEMENTED');
+    expect(s).toContain('index-abc.js:12:48496');
+  });
+  it('非 Error 值按 JSON / String 输出', () => {
+    expect(stringifyArg({ a: 1 })).toBe('{"a":1}');
+    expect(stringifyArg('x')).toBe('x');
+  });
+});
+```
+
+`tests/llmHttp.test.ts` 追加：
+
+```ts
+import { createLlmFetch } from '../src/llm/http';
+
+describe('createLlmFetch', () => {
+  const okResponse = () => new Response('ok', { status: 200 });
+  it('原生且插件可用时走原生 fetch', async () => {
+    let nativeCalls = 0;
+    const f = createLlmFetch({
+      isNative: () => true,
+      isPluginAvailable: () => true,
+      nativeFetch: async () => async () => { nativeCalls++; return okResponse(); },
+      webFetch: async () => { throw new Error('should not use web fetch'); },
+    });
+    await f('https://x/v1/models');
+    expect(nativeCalls).toBe(1);
+  });
+  it('原生但插件不可用时回退 web fetch', async () => {
+    let webCalls = 0;
+    const f = createLlmFetch({
+      isNative: () => true,
+      isPluginAvailable: () => false,
+      nativeFetch: async () => { throw new Error('should not load native'); },
+      webFetch: async () => { webCalls++; return okResponse(); },
+    });
+    await f('https://x/v1/models');
+    expect(webCalls).toBe(1);
+  });
+  it('Web 端直接用 web fetch', async () => {
+    let webCalls = 0;
+    const f = createLlmFetch({ isNative: () => false, isPluginAvailable: () => true, nativeFetch: async () => { throw new Error('no'); }, webFetch: async () => { webCalls++; return okResponse(); } });
+    await f('https://x/v1/models');
+    expect(webCalls).toBe(1);
+  });
+});
+```
+
+`tests/secureStore.test.ts` 的 native describe 追加：
+
+```ts
+  it('setApiKey：插件整体不可用时不抛，回退到 fallback prefs', async () => {
+    const prefs = new Map<string, string>();
+    configureSecureStore({
+      native: true,
+      plugin: { get: async () => { throw new Error('not implemented'); }, set: async () => { throw new Error('not implemented'); }, remove: async () => { throw new Error('not implemented'); } },
+      fallback: { get: async ({ key }) => ({ value: prefs.get(key) ?? null }), set: async ({ key, value }) => { prefs.set(key, value); }, remove: async ({ key }) => { prefs.delete(key); } },
+    });
+    await expect(setApiKey('sk-x')).resolves.toBeUndefined();
+    expect(prefs.get('chess-trainer-api-key')).toBe('sk-x');
+  });
+```
+
+- [ ] **Step 2: 实现**
+
+`install.ts`：
+
+```ts
+export function stringifyArg(v: unknown): string {
+  if (v instanceof Error) {
+    const code = (v as Error & { code?: unknown }).code;
+    const head = `${v.name}: ${v.message}${code !== undefined ? ` [${String(code)}]` : ''}`;
+    const stack = v.stack ?? '';
+    if (!stack) return head;
+    return stack.includes(v.message) && v.message ? stack : `${head}\n${stack}`;
+  }
+  if (typeof v === 'string') return v;
+  try { return JSON.stringify(v); } catch { return String(v); }
+}
+```
+
+`installDebugHooks` 末尾（`import { Capacitor } from '@capacitor/core'; import { isNative } from '../platform/native';`）：
+
+```ts
+  if (isNative()) {
+    const names = ['NativeSse', 'SecureStorage', 'Preferences', 'Filesystem', 'App', 'Keyboard', 'StatusBar'];
+    debugLog('info', 'app', `plugins ${names.map((n) => `${n}=${Capacitor.isPluginAvailable(n) ? 'yes' : 'no'}`).join(' ')}`);
+  }
+```
+
+`http.ts`：按 Interfaces 实现 `createLlmFetch`，`llmFetch` 用它构造；原生端插件可用性只检查一次并缓存结果。
+
+`secureStore.ts` `setApiKey`：
+
+```ts
+export async function setApiKey(key: string): Promise<void> {
+  try {
+    const p = await plugin();
+    if (!key) await withTimeout(p.remove(API_KEY_STORAGE), 800);
+    else await withTimeout(p.set(API_KEY_STORAGE, key), 800);
+    return;
+  } catch {
+    console.warn('[secureStore] Keychain 不可用，API Key 回退到 Preferences 明文存储');
+  }
+  // fallback 不变
+}
+```
+
+`settings.ts`：`void setApiKey(partial.apiKey).catch((e) => console.warn('[settings] 保存 API Key 失败', e));`
+
+- [ ] **Step 3: 验证与提交**
+
+`npm run typecheck && npm test` 全绿。
+
+```bash
+git add src/debug/install.ts src/llm/http.ts src/platform/secureStore.ts src/store/settings.ts tests/debugLog.test.ts tests/llmHttp.test.ts tests/secureStore.test.ts
+git commit -m "fix: 调试日志保留错误正文与插件可用性；NativeSse 缺失时回退 fetch；setApiKey 不再未处理拒绝"
+```

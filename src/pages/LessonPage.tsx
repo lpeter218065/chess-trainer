@@ -396,14 +396,9 @@ export function LessonView({
   const showComposer = Boolean((showIntroFollowUp || showRoundFollowUp) && composerThread);
   const boardHintArrow = isLive && phase === 'userTurn' ? hintArrow : null;
 
-  const leftPanel = showCandidates ? (
-    enginePv && enginePv.lines.length > 0 ? (
-      <EngineLinesPanel baseFen={enginePv.baseFen} lines={enginePv.lines} orientation={orientation} />
-    ) : (
-      <div className="flex h-full min-h-[8rem] items-center justify-center rounded-xl border border-dashed border-line text-xs text-muted">
-        {analyzing ? '候选分析中…' : '这一步还没有候选招法'}
-      </div>
-    )
+  const hasCandidates = showCandidates && !!enginePv && enginePv.lines.length > 0;
+  const leftPanel = hasCandidates ? (
+    <EngineLinesPanel baseFen={enginePv!.baseFen} lines={enginePv!.lines} orientation={orientation} />
   ) : undefined;
 
   return (
@@ -486,18 +481,21 @@ export function LessonView({
               {isLive && phase === 'engineThinking' && '引擎思考中…'}
               {isLive && phase === 'userTurn' && '轮到你走 · 点子或拖子'}
               {isLive && phase === 'finished' && '训练结束'}
+              {showCandidates && !hasCandidates && (analyzing ? ' · 候选分析中…' : ' · 这一步暂无候选')}
               {engineError && <span className="ml-2 text-danger" role="alert">{engineError}</span>}
             </span>
           </BoardToolbar>
-          <div className="max-h-28 min-h-16 shrink-0 overflow-y-auto">
-            <MoveList
-              history={history}
-              startMoveNumber={startMoveNumber}
-              blackFirst={sideToMove(currentLesson.startFen) === 'b'}
-              selectedPly={ply}
-              onSelectPly={onSelectPly}
-            />
-          </div>
+          {history.length > 0 && (
+            <div className="max-h-28 shrink-0 overflow-y-auto">
+              <MoveList
+                history={history}
+                startMoveNumber={startMoveNumber}
+                blackFirst={sideToMove(currentLesson.startFen) === 'b'}
+                selectedPly={ply}
+                onSelectPly={onSelectPly}
+              />
+            </div>
+          )}
           </div>
         </div>
       }

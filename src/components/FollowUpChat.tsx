@@ -25,13 +25,13 @@ export function FollowUpComposer({
 
   return (
     <div className="bg-paper/95 px-3 py-2">
-      <div className="mb-2 flex flex-wrap gap-1.5">
+      <div className="mb-2 flex gap-1.5 overflow-x-auto overscroll-x-contain">
         {FOLLOW_UP_CHIPS.map((chip) => (
           <button
             key={chip}
             type="button"
             disabled={busy}
-            className="btn btn-sm rounded-full px-3"
+            className="btn btn-sm shrink-0 whitespace-nowrap rounded-full px-3"
             onClick={() => send(chip)}
           >
             {chip}
@@ -46,10 +46,10 @@ export function FollowUpComposer({
           placeholder="继续问教练…"
           value={draft}
           disabled={busy}
-          onFocus={(e) => e.currentTarget.scrollIntoView({ block: 'center', behavior: 'smooth' })}
+          enterKeyHint="send"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
               e.preventDefault();
               send(draft);
             }
@@ -115,7 +115,7 @@ export function FollowUpChat({
         )}
       </div>
       {turns.length === 0 && !streaming && (
-        <p className="mb-2 text-xs text-muted">可追问细节；回答里悬停带标记的句子可高亮棋盘</p>
+        <p className="mb-2 text-xs text-muted">可追问细节；{focusMode === 'tap' ? '点击' : '悬停'}回答里带标记的句子可高亮棋盘</p>
       )}
       {!hideComposer && <FollowUpComposer disabled={busy} error={error} onAsk={onAsk} />}
     </div>

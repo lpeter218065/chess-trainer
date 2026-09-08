@@ -20,6 +20,7 @@ html {
   -webkit-tap-highlight-color: transparent;
   max-width: 100%;
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -182,5 +183,134 @@ button:disabled {
 
 [data-vp="compact"] .touch-row,
 [data-vp="medium"] .touch-row {
-  min-height: 36px;
+  min-height: 44px;
+}
+
+.board-toolbar {
+  min-width: 0;
+}
+
+[data-layout="stacked"] .board-toolbar,
+[data-layout="split"] .board-toolbar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.board-toolbar > .btn,
+.trainer-tabs > .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+[data-layout="stacked"] .board-toolbar::-webkit-scrollbar,
+[data-layout="split"] .board-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.trainer-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, min(68%, var(--board-row-max))) minmax(120px, 1fr);
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+}
+
+.trainer-board {
+  width: 100%;
+}
+
+.trainer-board > div {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.trainer-panel {
+  overscroll-behavior-y: contain;
+  overflow-wrap: anywhere;
+  padding: 8px;
+  scrollbar-gutter: stable;
+}
+
+.trainer-panel[hidden] {
+  display: none;
+}
+
+.trainer-panel > div {
+  min-width: 0;
+}
+
+[data-layout="stacked"] .trainer-panel {
+  flex: none;
+  overflow: visible;
+}
+
+.trainer-panel-scroll {
+  overscroll-behavior-y: contain;
+}
+
+[data-layout="split"] .trainer-workspace,
+[data-layout="wide"] .trainer-workspace {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
+}
+
+[data-layout="wide"] .trainer-workspace[data-candidates="true"] {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1fr);
+}
+
+[data-layout="split"] .trainer-header > header {
+  flex-wrap: nowrap;
+}
+
+[data-layout="stacked"] .lesson-moves,
+[data-layout="split"] .lesson-moves {
+  max-height: 48px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
+[data-layout="stacked"] .lesson-moves > div,
+[data-layout="split"] .lesson-moves > div {
+  display: flex;
+  align-items: center;
+  width: max-content;
+}
+
+/* On very short phones, scrolling preserves a usable board and reading area. */
+@media (max-width: 699px) and (max-height: 649px) {
+  .trainer-shell[data-layout="stacked"] {
+    height: auto;
+    min-height: 100dvh;
+    max-height: none;
+    overflow: visible;
+  }
+  [data-layout="stacked"] .trainer-workspace {
+    flex: none;
+    grid-template-rows: auto auto;
+  }
+  [data-layout="stacked"] .trainer-board {
+    height: calc(100vw + 100px);
+  }
+  [data-layout="stacked"] .trainer-detail {
+    height: max(240px, 60dvh);
+  }
+}
+
+@media (any-pointer: coarse) {
+  .btn-sm,
+  .trainer-shell button.touch-row {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .field {
+    font-size: 16px;
+  }
 }

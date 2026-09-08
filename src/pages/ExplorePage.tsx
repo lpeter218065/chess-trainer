@@ -215,17 +215,12 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
   const showComposer = Boolean(showCommentary && hasCommentaryAtPly && !llmStreaming);
 
   const leftPanel = showCandidates ? (
-    analysis && engineLines.length > 0 ? (
-      <EngineLinesPanel baseFen={analysis.fen} lines={engineLines} orientation={orientation} />
-    ) : (
-      <div className="flex h-full min-h-[12rem] flex-col gap-2">
-        {[1, 2, 3].map((n) => (
-          <div key={n} className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-line text-xs text-muted">
-            {analyzing ? `PV${n} 分析中…` : `PV${n} · 走子后会出现候选`}
-          </div>
-        ))}
-      </div>
-    )
+    <EngineLinesPanel
+      baseFen={analysis?.fen ?? viewed.fen}
+      lines={engineLines}
+      orientation={orientation}
+      analyzing={analyzing}
+    />
   ) : undefined;
 
   return (
@@ -279,6 +274,8 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
             <EvalBar cp={evalCp} playerIsWhite={true} />
           </div>
           <BoardToolbar>
+            <button type="button" className="btn btn-sm" disabled={ply <= 0} aria-label="上一步" onClick={() => stepReview('back')}>←</button>
+            <button type="button" className="btn btn-sm" disabled={isLive} aria-label="下一步" onClick={() => stepReview('forward')}>→</button>
             <ToolToggle
               pressed={showAnnotations}
               disabled={!boardAnnotations}
@@ -304,8 +301,6 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
             <button type="button" className="btn btn-sm" onClick={() => store.getState().setOrientation(orientation === 'white' ? 'black' : 'white')}>
               翻转
             </button>
-            <button type="button" className="btn btn-sm" disabled={ply <= 0} aria-label="上一步" onClick={() => stepReview('back')}>←</button>
-            <button type="button" className="btn btn-sm" disabled={isLive} aria-label="下一步" onClick={() => stepReview('forward')}>→</button>
             <span className="min-w-0 truncate text-xs text-muted">
               {analyzing && '引擎分析中，可继续走棋'}
               {!analyzing && isLive && '点子或拖子均可 · 走子后自动分析'}

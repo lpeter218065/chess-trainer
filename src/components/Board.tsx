@@ -62,6 +62,7 @@ function BoardImpl({
   const hostRef = useRef<HTMLDivElement>(null);
   const prevFenRef = useRef<string>('');
   const [side, setSide] = useState(0);
+  const { legalMoves, ownPieceSquares } = useMemo(() => tapInputs(fen), [fen]);
 
   // 仅当本次 fen 相对上一次为「单步」变化时才动画（回退/跳步/变着一次动多子会点选错位）。
   // prevFenRef 在 commit 后更新，故渲染期读到的是上一帧已提交的 fen。
@@ -91,13 +92,12 @@ function BoardImpl({
   }, []);
 
   const tryMove = useCallback((from: string, to: string) => {
-    const chess = new Chess(fen);
-    const legal = chess.moves({ verbose: true }).find((m) => m.from === from && m.to === to);
+    const legal = legalMoves.find((m) => m.from === from && m.to === to);
     if (!legal) return false;
     setTap(EMPTY_TAP);
     void onMove(from, to, legal.promotion ? 'q' : undefined);
     return true;
-  }, [fen, onMove]);
+  }, [legalMoves, onMove]);
 
   const applyTap = useCallback((square: string) => {
     if (lastTapRef.current === square) return;
@@ -106,13 +106,12 @@ function BoardImpl({
       lastTapRef.current = null;
     });
     onBackgroundTap?.();
-    const { legalMoves, ownPieceSquares } = tapInputs(fen);
     const result = tapMoveReducer(tap, square, legalMoves, ownPieceSquares, interactive);
     setTap(result.state);
     if (result.kind === 'move') {
       void onMove(result.from, result.to, result.promotion);
     }
-  }, [fen, interactive, onBackgroundTap, onMove, tap]);
+  }, [legalMoves, ownPieceSquares, interactive, onBackgroundTap, onMove, tap]);
 
   const squareStyles = useMemo(() => {
     const s: Record<string, CSSProperties> = {};
@@ -151,8 +150,6 @@ function BoardImpl({
     return tryMove(sourceSquare, targetSquare);
   }, [interactive, tryMove]);
 
-  const turn = fen.split(' ')[1] === 'b' ? 'b' : 'w';
-
   const options = useMemo(() => ({
     id: 'trainer-board',
     position: fen,
@@ -164,8 +161,7 @@ function BoardImpl({
     showAnimations,
     canDragPiece: ({ square }: { square: string | null }) => {
       if (!interactive || !square) return false;
-      const p = new Chess(fen).get(square as Square);
-      return !!p && p.color === turn;
+      return ownPieceSquares.has(square);
     },
     squareStyles,
     boardStyle: side > 0 ? { width: side, height: side } : { width: '100%', height: '100%' },
@@ -181,7 +177,7 @@ function BoardImpl({
     onSquareClick: ({ square }: { square: string }) => {
       applyTap(square);
     },
-  }), [fen, orientation, interactive, turn, squareStyles, arrows, onPieceDrop, applyTap, side, showAnimations]);
+  }), [fen, orientation, interactive, ownPieceSquares, squareStyles, arrows, onPieceDrop, applyTap, side, showAnimations]);
 
   return (
     <div

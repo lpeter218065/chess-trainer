@@ -423,7 +423,7 @@ export function LessonView({
                 if (id) void switchLessonSession(id, lesson, difficultyById(difficultyId));
               }}
             />
-            <label className="inline-flex min-h-11 items-center gap-1.5 text-sm text-muted">
+            <label className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap text-sm text-muted">
               {difficultyLabel}
               <select className="field min-h-11 w-auto py-0 text-sm" value={difficultyId} onChange={(e) => onDifficulty(e.target.value as DifficultyId)}>
                 {(difficultyOptions ?? DIFFICULTIES).map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
@@ -457,6 +457,8 @@ export function LessonView({
             <EvalBar cp={evalCp} playerIsWhite={currentLesson.playerColor === 'w'} />
           </div>
           <BoardToolbar>
+            <button type="button" className="btn btn-sm" disabled={ply <= 0} aria-label="上一步" onClick={() => stepReview('back')}>←</button>
+            <button type="button" className="btn btn-sm" disabled={isLive} aria-label="下一步" onClick={() => stepReview('forward')}>→</button>
             <ToolToggle
               pressed={showAnnotations}
               disabled={!boardAnnotations}
@@ -471,8 +473,6 @@ export function LessonView({
             <ToolToggle pressed={showAssessment} onClick={() => setShowAssessment((v) => !v)}>
               局面判断
             </ToolToggle>
-            <button type="button" className="btn btn-sm" disabled={ply <= 0} aria-label="上一步" onClick={() => stepReview('back')}>←</button>
-            <button type="button" className="btn btn-sm" disabled={isLive} aria-label="下一步" onClick={() => stepReview('forward')}>→</button>
             <button type="button" className="btn btn-sm" disabled={!canTakeback} title={!canTakeback ? '没有可退的一步' : '撤销你的上一手，之后着法会丢掉'} onClick={() => void onTakeback()}>退一步</button>
             <span className="min-w-0 truncate text-xs text-muted">
               {!isLive && canPlayHere && '回看中 · 点子或拖子改走（之后着法将丢弃）'}
@@ -486,7 +486,7 @@ export function LessonView({
             </span>
           </BoardToolbar>
           {history.length > 0 && (
-            <div className="max-h-28 shrink-0 overflow-y-auto">
+            <div className="lesson-moves max-h-28 shrink-0 overflow-y-auto">
               <MoveList
                 history={history}
                 startMoveNumber={startMoveNumber}

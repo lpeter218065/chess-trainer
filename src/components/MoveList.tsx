@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from 'react';
+import { memo, useEffect, useRef, type ReactNode } from 'react';
 import type { Quality } from '../chess/quality';
 import { QUALITY_LABEL } from '../chess/quality';
 import type { MoveNodeId, MoveTree } from '../chess/moveTree';
@@ -23,6 +23,18 @@ function MoveListImpl({
   onSelectPly: (ply: number) => void;
   qualities?: (Quality | null)[];
 }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const list = listRef.current;
+    const scroller = list?.parentElement;
+    const selected = list?.querySelector<HTMLElement>('[aria-current="step"]');
+    if (!scroller || !selected || scroller.scrollWidth <= scroller.clientWidth) return;
+    const item = selected.getBoundingClientRect();
+    const box = scroller.getBoundingClientRect();
+    if (item.left < box.left) scroller.scrollLeft += item.left - box.left;
+    else if (item.right > box.right) scroller.scrollLeft += item.right - box.right;
+  }, [selectedPly]);
+
   const cells: { num: number; white?: { san: string; ply: number }; black?: { san: string; ply: number } }[] = [];
   let i = 0;
   let ply = 1;
@@ -48,6 +60,7 @@ function MoveListImpl({
     return (
       <button
         type="button"
+        aria-current={selected ? 'step' : undefined}
         className={`touch-row min-h-8 rounded px-1.5 text-left ${selected ? 'bg-select' : 'hover:bg-cream/50'}`}
         onClick={() => onSelectPly(move.ply)}
       >
@@ -58,7 +71,7 @@ function MoveListImpl({
   };
 
   return (
-    <div className="grid grid-cols-[2.5rem_1fr_1fr] gap-x-2 gap-y-0.5 font-mono text-sm">
+    <div ref={listRef} className="grid grid-cols-[2.5rem_1fr_1fr] gap-x-2 gap-y-0.5 font-mono text-sm">
       {cells.map((c) => (
         <div key={c.num} className="contents">
           <span className="text-muted">{c.num}.</span>

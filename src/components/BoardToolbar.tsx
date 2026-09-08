@@ -28,5 +28,5 @@ export function ToolToggle({
 }
 
 export function BoardToolbar({ children }: { children: ReactNode }) {
-  return <div className="flex flex-wrap items-center gap-1.5">{children}</div>;
+  return <div className="board-toolbar flex flex-wrap items-center gap-1.5">{children}</div>;
 }

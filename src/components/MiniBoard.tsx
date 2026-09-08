@@ -62,9 +62,13 @@ function MiniBoardImpl({
   return (
     <div
       ref={hostRef}
-      className={`flex items-center justify-center overflow-hidden rounded-md border border-line bg-cream ${className ?? 'aspect-square w-36 shrink-0'}`}
+      className={`flex items-center justify-center overflow-hidden ${className ?? 'aspect-square w-36 shrink-0'}`}
     >
-      {side > 0 ? <Chessboard options={options} /> : null}
+      {side > 0 ? (
+        <div className="shrink-0 overflow-hidden rounded-md" style={{ width: side, height: side }}>
+          <Chessboard options={options} />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -41,13 +41,28 @@ function readViewport(): { width: number; height: number; klass: ViewportClass }
 export function useViewportSize(): { width: number; height: number; klass: ViewportClass } {
   const [vp, setVp] = useState(readViewport);
   useEffect(() => {
-    const update = () => setVp(readViewport());
-    window.addEventListener('resize', update);
-    window.addEventListener('orientationchange', update);
+    let frame: number | null = null;
+    const update = () => {
+      frame = null;
+      const next = readViewport();
+      setVp((previous) => (
+        previous.width === next.width &&
+        previous.height === next.height &&
+        previous.klass === next.klass
+          ? previous
+          : next
+      ));
+    };
+    const scheduleUpdate = () => {
+      if (frame === null) frame = window.requestAnimationFrame(update);
+    };
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('orientationchange', scheduleUpdate);
     update();
     return () => {
-      window.removeEventListener('resize', update);
-      window.removeEventListener('orientationchange', update);
+      window.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('orientationchange', scheduleUpdate);
+      if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, []);
   return vp;

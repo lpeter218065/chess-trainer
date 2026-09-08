@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { useViewportSize, type ViewportClass } from '../../platform';
 
 const LEFT_TAB = '__left';
@@ -16,7 +16,7 @@ export interface TrainerLayoutProps {
   leftPanel?: ReactNode;
   panels: TrainerPanel[];
   footer?: ReactNode;
-  /** compact/medium 分段时，只在该 panel 激活时显示 footer */
+  /** 只在该 panel 激活时显示 footer */
   footerPanelId?: string;
   storageKey: string;
 }
@@ -44,21 +44,37 @@ function Segmented({
   tabs,
   active,
   onSelect,
+  id,
 }: {
   tabs: { id: string; label: string }[];
   active: string;
   onSelect: (id: string) => void;
+  id: string;
 }) {
   return (
-    <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-line p-2" role="tablist">
+    <div className="trainer-tabs flex shrink-0 gap-1 overflow-x-auto border-b border-line p-2" role="tablist" aria-label="训练面板">
       {tabs.map((t) => (
         <button
           key={t.id}
           type="button"
           role="tab"
+          id={`${id}-tab-${t.id}`}
+          aria-controls={`${id}-panel-${t.id}`}
           aria-selected={t.id === active}
+          tabIndex={t.id === active ? 0 : -1}
           className={`btn btn-sm ${t.id === active ? 'btn-on' : 'btn-ghost'}`}
           onClick={() => onSelect(t.id)}
+          onKeyDown={(e) => {
+            const index = tabs.findIndex((tab) => tab.id === t.id);
+            const next = e.key === 'ArrowRight' ? (index + 1) % tabs.length
+              : e.key === 'ArrowLeft' ? (index - 1 + tabs.length) % tabs.length
+                : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
+            if (next < 0) return;
+            e.preventDefault();
+            e.stopPropagation();
+            onSelect(tabs[next].id);
+            document.getElementById(`${id}-tab-${tabs[next].id}`)?.focus();
+          }}
         >
           {t.label}
         </button>
@@ -67,17 +83,20 @@ function Segmented({
   );
 }
 
-function FooterSlot({ children, compact }: { children: ReactNode; compact: boolean }) {
+function FooterSlot({ children }: { children: ReactNode }) {
   return (
     <div
-      className="sticky bottom-0 z-10 border-t border-line bg-paper/95 backdrop-blur"
-      style={{
-        paddingBottom: compact ? 'max(0.5rem, env(safe-area-inset-bottom))' : undefined,
-      }}
+      className="shrink-0 border-t border-line bg-paper"
     >
       {children}
     </div>
   );
+}
+
+export function trainerLayoutMode(width: number, height: number): 'stacked' | 'split' | 'wide' {
+  if (width >= 1024 && height >= 600 && (width >= height || width >= 1180)) return 'wide';
+  if (width >= 700 && width > height) return 'split';
+  return 'stacked';
 }
 
 export function boardSidePx(
@@ -120,13 +139,15 @@ export function TrainerLayout({
 }: TrainerLayoutProps) {
   const { width, height, klass } = useViewportSize();
   const hasLeft = leftPanel != null;
+  const mode = trainerLayoutMode(width, height);
+  const tabId = useId();
 
   const tabs = useMemo(() => {
-    if (klass === 'compact' && hasLeft) {
+    if (mode !== 'wide' && hasLeft) {
       return [{ id: LEFT_TAB, label: '候选', content: leftPanel }, ...panels];
     }
     return panels;
-  }, [klass, hasLeft, leftPanel, panels]);
+  }, [mode, hasLeft, leftPanel, panels]);
 
   const validIds = useMemo(() => tabs.map((t) => t.id), [tabs]);
   const validKey = validIds.join(',');
@@ -143,83 +164,58 @@ export function TrainerLayout({
   };
 
   const active = tabs.find((t) => t.id === segment) ?? tabs[0];
-  const reservedBelowPx = klass === 'compact' ? 210 : 0;
-  const boardStyle = boardWrapStyle(klass, width, height, hasLeft, reservedBelowPx);
-  const footerVisible = Boolean(footer) && (klass === 'wide' || !footerPanelId || active?.id === footerPanelId);
+  const reservedBelowPx = klass === 'compact' ? 168 : 0;
+  const boardStyle = mode === 'stacked' && klass === 'compact'
+    ? boardWrapStyle(klass, width, height, hasLeft, reservedBelowPx)
+    : undefined;
+  const footerVisible = Boolean(footer) && (!footerPanelId || active?.id === footerPanelId);
 
   const shell: CSSProperties = {
+    '--board-row-max': `${width + 64}px`,
     paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
     paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
     paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
-    paddingBottom: klass === 'compact' ? 0 : 'max(0.75rem, env(safe-area-inset-bottom))',
-  };
+    paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
+  } as CSSProperties;
 
   return (
     <div
-      className="box-border flex h-dvh max-h-dvh flex-col overflow-hidden"
+      className="trainer-shell box-border flex h-dvh max-h-dvh min-w-0 flex-col overflow-hidden"
       style={shell}
       data-vp={klass}
+      data-layout={mode}
     >
-      <div className="mb-2 shrink-0">{header}</div>
-
-      {klass === 'wide' && (
-        <div
-          className={`mx-auto grid w-full max-w-7xl min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-3 ${
-            hasLeft
-              ? 'grid-cols-[minmax(200px,0.9fr)_minmax(260px,1.1fr)_minmax(260px,1fr)]'
-              : 'grid-cols-[minmax(260px,1.1fr)_minmax(260px,1fr)]'
-          }`}
-        >
-          {hasLeft && (
-            <aside className="panel min-h-0 overflow-hidden p-2">{leftPanel}</aside>
-          )}
-          <main className="min-h-0 self-stretch overflow-hidden">{board}</main>
-          <aside className="panel flex min-h-0 flex-col overflow-hidden">
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              {panels.map((p, i) => (
-                <div
-                  key={p.id}
-                  className={i === 0 ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden' : 'min-h-0 shrink-0 overflow-y-auto'}
-                >
-                  {p.content}
-                </div>
-              ))}
-            </div>
-            {footerVisible && <FooterSlot compact={false}>{footer}</FooterSlot>}
-          </aside>
-        </div>
-      )}
-
-      {klass === 'medium' && (
-        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
-          <div className="flex min-h-0 flex-[1.2] items-stretch justify-center gap-2 overflow-hidden">
-            {hasLeft ? (
-              <>
-                <div className="flex h-full min-h-0 w-[55%] min-w-0 flex-col overflow-hidden">{board}</div>
-                <aside className="panel h-full min-h-0 min-w-0 flex-1 overflow-hidden p-2">{leftPanel}</aside>
-              </>
-            ) : (
-              <div className="flex h-full min-h-0 w-full max-w-[60%] flex-col overflow-hidden" style={boardStyle}>{board}</div>
+      <div className="trainer-header mb-2 min-w-0 shrink-0">{header}</div>
+      <div className="trainer-workspace" data-candidates={hasLeft}>
+        {mode === 'wide' && hasLeft && (
+          <aside className="trainer-candidates panel min-h-0 min-w-0 overflow-hidden p-2">{leftPanel}</aside>
+        )}
+        <main className="trainer-board min-h-0 min-w-0 overflow-hidden" style={boardStyle}>{board}</main>
+        <aside className="trainer-detail panel flex min-h-0 min-w-0 flex-col overflow-hidden">
+          <Segmented id={tabId} tabs={tabs} active={active?.id ?? ''} onSelect={selectSegment} />
+          <div className="trainer-panel-scroll flex min-h-0 flex-1 flex-col overflow-y-auto">
+            {tabs.map((panel) => (
+              <div
+                key={panel.id}
+                id={`${tabId}-panel-${panel.id}`}
+                role="tabpanel"
+                aria-labelledby={`${tabId}-tab-${panel.id}`}
+                hidden={panel.id !== active?.id}
+                className="trainer-panel min-h-0 min-w-0 flex-1 overflow-y-auto"
+                tabIndex={0}
+              >
+                {/* Candidate playback must stop while its tab is hidden. */}
+                {(panel.id !== LEFT_TAB || panel.id === active?.id) && panel.content}
+              </div>
+            ))}
+            {footer && (
+              <div className="shrink-0" hidden={!footerVisible}>
+                <FooterSlot>{footer}</FooterSlot>
+              </div>
             )}
           </div>
-          <div className="panel flex min-h-0 flex-1 flex-col overflow-hidden">
-            <Segmented tabs={tabs} active={active?.id ?? ''} onSelect={selectSegment} />
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">{active?.content}</div>
-            {footerVisible && <FooterSlot compact={false}>{footer}</FooterSlot>}
-          </div>
-        </div>
-      )}
-
-      {klass === 'compact' && (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 flex-[1.6] flex-col overflow-hidden" style={boardStyle}>{board}</div>
-          <div className="panel mt-2 flex min-h-[10rem] flex-1 flex-col overflow-hidden">
-            <Segmented tabs={tabs} active={active?.id ?? ''} onSelect={selectSegment} />
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">{active?.content}</div>
-          </div>
-          {footerVisible && <FooterSlot compact>{footer}</FooterSlot>}
-        </div>
-      )}
+        </aside>
+      </div>
     </div>
   );
 }

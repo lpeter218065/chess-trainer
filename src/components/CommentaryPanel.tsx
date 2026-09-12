@@ -100,7 +100,7 @@ export function CommentaryPanel({
                 <li key={item.index}>
                   <button
                     type="button"
-                    className="w-full px-3 py-2 text-left text-xs hover:bg-cream/40"
+                    className="min-h-11 w-full px-3 py-2 text-left text-xs"
                     onClick={() => {
                       onSelectRound(item.index);
                       setHistoryOpen(false);
@@ -118,7 +118,7 @@ export function CommentaryPanel({
 
       {showingIntro && (
         <section className="rounded-xl border border-line p-3">
-          <h3 className="mb-1 text-xs font-semibold tracking-wide text-muted uppercase">开场</h3>
+          <h3 className="mb-1 text-xs font-semibold text-muted">开场</h3>
           <AnnotatedCommentary
             text={intro}
             streaming={streaming === 'intro'}

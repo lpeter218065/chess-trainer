@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import type { StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { getExploreStore, useExplore, switchExploreSession, newExploreSession } from '../store/exploreInstance';
@@ -21,8 +21,12 @@ import { scoreToCp } from '../chess/quality';
 import { exploreFollowUpThreadId } from '../llm/prompts';
 import { START_FEN } from '../chess/pgn';
 import { LoadingScreen } from '../components/LoadingScreen';
-import { BoardToolbar, ToolToggle } from '../components/BoardToolbar';
+import { BoardToolbar, BoardStatus, ToolToggle, BoardMoreMenu } from '../components/BoardToolbar';
 import { TrainerLayout } from '../components/layout/TrainerLayout';
+import { NavBack } from '../components/layout/NavBack';
+import { originFromState, originLabel, originPath } from '../components/layout/navOrigin';
+import { SettingsDialog } from '../components/SettingsDialog';
+import { MissingKeyEmpty } from '../components/MissingKeyEmpty';
 import { useHasHover } from '../platform';
 import type { CommentaryFocusMode } from '../components/AnnotatedCommentary';
 import { ExploreCommentary, useExploreCommentaryPresence } from '../components/explore/ExploreCommentary';
@@ -98,8 +102,11 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showAssessment, setShowAssessment] = useState(false);
   const [showCandidates, setShowCandidates] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const focusMode: CommentaryFocusMode = useHasHover() ? 'hover' : 'tap';
   const hasKey = useSettings((st) => Boolean(st.llm.apiKey));
+  const location = useLocation();
+  const origin = originFromState(location.state);
 
   const history = useMemo(() => pathSans(tree, path), [tree, path]);
   // 与 store 的 viewedPly() / isLive() 同义，改为本地计算以免订阅整个 store
@@ -224,16 +231,21 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
   ) : undefined;
 
   return (
+    <>
     <TrainerLayout
       storageKey="explore-v2"
       footerPanelId="analysis"
+      detailDefault={hasKey ? 'half' : 'collapsed'}
+      collapsedAction={!hasKey ? <MissingKeyEmpty compact onConfigure={() => setSettingsOpen(true)} /> : undefined}
       header={
-        <header className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <Link className="inline-flex min-h-11 items-center text-felt underline-offset-4 hover:underline" to="/">← 返回</Link>
-          <span className="font-display font-semibold text-ink">自由探索</span>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link to="/analyses" className="btn text-xs">我的分析</Link>
+        <header className="trainer-nav text-sm">
+          <div className="trainer-nav-start">
+            <NavBack to={originPath(origin)}>{originLabel(origin)}</NavBack>
+          </div>
+          <h1 className="trainer-nav-title">自由探索</h1>
+          <div className="trainer-nav-end">
             <SessionBar
+              trigger="more"
               kind="explore"
               onSwitch={(id) => void switchExploreSession(id)}
               onNew={() => void newExploreSession()}
@@ -245,6 +257,16 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                 const id = gs.saveAsExplore(from, title);
                 if (id) void switchExploreSession(id);
               }}
+              extra={
+                <Link
+                  to="/analyses"
+                  state={{ from: 'explore' }}
+                  className="flex min-h-11 w-full items-center px-2 text-left text-sm text-ink"
+                  role="menuitem"
+                >
+                  我的分析
+                </Link>
+              }
             />
           </div>
         </header>
@@ -274,40 +296,64 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
             <EvalBar cp={evalCp} playerIsWhite={true} />
           </div>
           <BoardToolbar>
-            <button type="button" className="btn btn-sm" disabled={ply <= 0} aria-label="上一步" onClick={() => stepReview('back')}>←</button>
-            <button type="button" className="btn btn-sm" disabled={isLive} aria-label="下一步" onClick={() => stepReview('forward')}>→</button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={ply <= 0}
+              aria-label="上一步"
+              title={ply <= 0 ? '已经是起始局面' : '上一步'}
+              onClick={() => stepReview('back')}
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={isLive}
+              aria-label="下一步"
+              title={isLive ? '已经是最新局面' : '下一步'}
+              onClick={() => stepReview('forward')}
+            >
+              →
+            </button>
             <ToolToggle
               pressed={showAnnotations}
               disabled={!boardAnnotations}
               title={!boardAnnotations ? (analyzing ? '引擎分析完成后可显示箭头' : '还没有分析') : undefined}
               onClick={() => setShowAnnotations((v) => !v)}
             >
-              {showAnnotations ? '隐藏分析' : '显示分析'}
+              分析
             </ToolToggle>
-            <ToolToggle
-              pressed={showCandidates}
-              onClick={() => setShowCandidates((v) => !v)}
-            >
-              候选招法
-            </ToolToggle>
-            <ToolToggle
-              pressed={showAssessment}
-              disabled={!hasKey}
-              title={!hasKey ? '请先在设置中配置 API Key' : undefined}
-              onClick={() => setShowAssessment((v) => !v)}
-            >
-              局面判断
-            </ToolToggle>
-            <button type="button" className="btn btn-sm" onClick={() => store.getState().setOrientation(orientation === 'white' ? 'black' : 'white')}>
-              翻转
-            </button>
-            <span className="min-w-0 truncate text-xs text-muted">
+            <BoardMoreMenu
+              items={[
+                {
+                  id: 'candidates',
+                  label: '候选',
+                  pressed: showCandidates,
+                  onClick: () => setShowCandidates((v) => !v),
+                },
+                {
+                  id: 'assessment',
+                  label: '局面',
+                  pressed: showAssessment,
+                  disabled: !hasKey,
+                  reason: !hasKey ? '请先配置 API Key' : undefined,
+                  onClick: () => setShowAssessment((v) => !v),
+                },
+                {
+                  id: 'flip',
+                  label: '翻转',
+                  pressed: orientation === 'black',
+                  onClick: () => store.getState().setOrientation(orientation === 'white' ? 'black' : 'white'),
+                },
+              ]}
+            />
+          </BoardToolbar>
+          <BoardStatus error={error}>
               {analyzing && '引擎分析中，可继续走棋'}
               {!analyzing && isLive && '点子或拖子均可 · 走子后自动分析'}
               {!analyzing && !isLive && '回看中 · 走子将进入变着'}
-              {error && <span className="ml-2 text-danger" role="alert">{error}</span>}
-            </span>
-          </BoardToolbar>
+          </BoardStatus>
           </div>
         </div>
       }
@@ -315,7 +361,8 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
       panels={[
         {
           id: 'analysis',
-          label: '讲解与着法',
+          label: '讲解',
+          disabled: !hasKey,
           content: (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <section className="flex min-h-0 flex-[1.2] flex-col overflow-hidden border-b border-line p-3">
@@ -346,7 +393,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                           void store.getState().requestCommentary({ forceNew: true });
                         }}
                       >
-                        重新推理
+                        重新讲解
                       </button>
                     )}
                   </div>
@@ -358,7 +405,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                           <li key={entry.threadId}>
                             <button
                               type="button"
-                              className={`w-full px-3 py-2 text-left text-xs ${active ? 'bg-felt-fg' : 'hover:bg-cream/40'}`}
+                              className={`min-h-11 w-full px-3 py-2 text-left text-xs ${active ? 'bg-cream' : ''}`}
                               onClick={() => {
                                 store.getState().goToCommentary(entry.threadId);
                                 setHistoryOpen(false);
@@ -385,7 +432,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                       />
                     </div>
                   )}
-                  {!hasKey && <p className="text-xs text-muted">请先在首页设置中配置 API Key，才能生成讲解</p>}
+                  {!hasKey && <MissingKeyEmpty onConfigure={() => setSettingsOpen(true)} />}
                   {showCommentary ? (
                     <ExploreCommentary
                       store={store}
@@ -399,17 +446,17 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                     <>
                       {hasKey && (
                         <div className="flex flex-col items-start gap-2">
-                          <p className="text-sm text-muted">还没有这步的讲解。切回已讲过的局面会自动显示历史。</p>
+                          <p className="text-sm text-muted">还没有这步的讲解。切回已讲过的局面会自动显示。</p>
                           <button
                             type="button"
                             className="btn btn-primary"
-                            disabled={llmStreaming}
+                            disabled={llmStreaming || !hasKey}
                             onClick={() => {
                               setCommentaryOpen(true);
                               void store.getState().requestCommentary();
                             }}
                           >
-                            {llmStreaming ? '生成中…' : '生成本局面讲解'}
+                            {llmStreaming ? '生成中…' : '讲解这步'}
                           </button>
                         </div>
                       )}
@@ -467,5 +514,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
       ]}
       footer={showComposer ? <ExploreFollowUpComposer store={store} hasKey={hasKey} /> : undefined}
     />
+    {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+    </>
   );
 }

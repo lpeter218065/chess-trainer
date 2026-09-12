@@ -29,6 +29,8 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
   private var tasks: [String: URLSessionDataTask] = [:]
   private var idByTask: [Int: String] = [:]
   private var utf8Remainder: [String: Data] = [:]
+  private var pendingChunks: [String: String] = [:]
+  private var flushWork: [String: DispatchWorkItem] = [:]
   private let lock = NSLock()
 
   @objc func start(_ call: CAPPluginCall) {
@@ -86,7 +88,10 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
       idByTask.removeValue(forKey: task.taskIdentifier)
     }
     utf8Remainder.removeValue(forKey: id)
+    pendingChunks.removeValue(forKey: id)
+    let work = flushWork.removeValue(forKey: id)
     lock.unlock()
+    work?.cancel()
     task?.cancel()
     call.resolve()
   }
@@ -109,7 +114,7 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
     let id = streamId(for: dataTask)
     let chunk = decodeUtf8(id: id, incoming: data)
     if !chunk.isEmpty {
-      notify("chunk", ["id": id, "chunk": chunk], retain: false)
+      enqueueChunk(id: id, chunk: chunk)
     }
   }
 
@@ -123,9 +128,10 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
     if !tail.isEmpty {
       let leftover = String(decoding: tail, as: UTF8.self)
       if !leftover.isEmpty {
-        notify("chunk", ["id": id, "chunk": leftover], retain: false)
+        enqueueChunk(id: id, chunk: leftover)
       }
     }
+    flushChunk(id)
     if let error, (error as NSError).code != NSURLErrorCancelled {
       notify("error", ["id": id, "message": error.localizedDescription], retain: true)
       return
@@ -154,6 +160,31 @@ public class NativeSsePlugin: CAPPlugin, CAPBridgedPlugin, URLSessionDataDelegat
     utf8Remainder[id] = buf
     lock.unlock()
     return ""
+  }
+
+  private func enqueueChunk(id: String, chunk: String) {
+    lock.lock()
+    pendingChunks[id, default: ""].append(chunk)
+    let already = flushWork[id]
+    lock.unlock()
+    if already != nil { return }
+    let work = DispatchWorkItem { [weak self] in
+      self?.flushChunk(id)
+    }
+    lock.lock()
+    flushWork[id] = work
+    lock.unlock()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.032, execute: work)
+  }
+
+  private func flushChunk(_ id: String) {
+    lock.lock()
+    let text = pendingChunks.removeValue(forKey: id) ?? ""
+    flushWork.removeValue(forKey: id)?.cancel()
+    lock.unlock()
+    if !text.isEmpty {
+      notify("chunk", ["id": id, "chunk": text], retain: false)
+    }
   }
 
   private func streamId(for task: URLSessionTask) -> String {

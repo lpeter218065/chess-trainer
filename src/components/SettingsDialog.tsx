@@ -45,18 +45,19 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
   };
   return (
     <div
-      className="fixed inset-0 z-10 flex items-end justify-center overflow-x-hidden overflow-y-auto overscroll-contain bg-ink/50 p-4 sm:items-center"
+      className="fixed inset-0 z-40 flex items-end justify-center overflow-x-hidden overflow-y-auto overscroll-contain bg-ink/50 p-3 sm:items-center sm:p-4"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-md overflow-x-hidden overflow-y-auto rounded-2xl bg-paper p-6 shadow-xl"
+        className="sheet max-h-[calc(100dvh-2rem)] min-w-0 overflow-x-hidden overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
       >
-        <h2 id="settings-title" className="font-display mb-4 text-xl font-semibold text-ink">设置</h2>
+        <div className="sheet-handle sm:hidden" />
+        <h2 id="settings-title" className="page-title mb-4 text-xl">设置</h2>
         <label className="block text-sm font-medium text-ink">Base URL
           <input className="field mt-1" value={llm.baseUrl} onChange={(e) => setLlm({ baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" autoComplete="url" />
           <span className="mt-1 block text-xs text-muted">OpenAI 兼容接口填到 /v1 为止，勿含 /chat/completions</span>
@@ -84,7 +85,7 @@ export function SettingsDialog({ onClose }: { onClose(): void }) {
           API Key 只存在本机（Web 为本地存储，iOS 为 Keychain）。讲解请求发往你填写的服务地址；本项目没有任何自有服务器。
         </p>
         <p className="mt-2 text-xs">
-          <Link to="/licenses" className="text-felt underline-offset-4 hover:underline" onClick={onClose}>开源许可</Link>
+          <Link to="/licenses" className="text-walnut underline-offset-4 hover:underline" onClick={onClose}>开源许可</Link>
         </p>
         <div className="mt-5 flex flex-wrap items-center gap-2">
           <button type="button" className="btn btn-primary" onClick={() => void test()}>测试连接</button>

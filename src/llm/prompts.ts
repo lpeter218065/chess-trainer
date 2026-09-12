@@ -2,6 +2,7 @@ import type { Lesson } from '../lessons/schema';
 import type { Principle } from '../lessons/principles';
 import { QUALITY_LABEL, type Quality } from '../chess/quality';
 import { formatEval } from '../chess/notation';
+import { squareThemesPromptBlock } from '../chess/squareThemes';
 import { ANGLE_GUIDE, ANGLE_LABEL, type Angle } from './angles';
 import type { ChatMessage } from './client';
 
@@ -20,7 +21,7 @@ const SYSTEM = `你是一位耐心、有见地的国际象棋教练，用简体�
 export const LLM_MAX_TOKENS = {
   intro: 500,
   commentary: 600,
-  explore: 700,
+  explore: 800,
   followUp: 400,
   hint: 200,
   summary: 800,
@@ -38,16 +39,20 @@ const LESSON_MARKER_HINT = `输出格式（覆盖规则 6 的要点格式）：
 
 const EXPLORE_HINT = `输出格式（覆盖规则 6 的要点格式）：
 - 第一行：总评——必须点明**当前轮到谁走**，并一句话概括形势（谁更主动 / 关键矛盾），不加前缀
-- 2~4 行要点，每行以「• {{格子}} 」开头。格子为逗号分隔（如 {{d5,c3}}）；需要指向进攻方向时可写 {{d5,c3|e2-e4}}（| 后为 from-to 箭头）
-- 要点顺序优先：① 若上一手有问题，先讲**错在哪**（动机/漏算/结构代价）；② 再讲**正确思路**：行棋方此刻该走哪、为什么（着法必须取自引擎 PV，可用箭头标记）
+- 3~5 行要点，每行以「• {{格子}} 」开头。格子为逗号分隔（如 {{d5,c3}}）；进攻方向写 {{d5,c3|e2-e4}}（| 后为 from-to 箭头）
+- 要点必须覆盖：① **强格**（前哨，标 {{格子}}）② **弱格**（空洞，标 {{格子}}）③ **进攻思路**（从哪条线/方向施压，尽量用箭头标记；着法必须取自引擎 PV）
+- 若上一手质量不佳，再加一条**错在哪**；**正确思路**可与进攻思路合并（着法取自引擎 PV）
+- 强格/弱格只能使用「局面格子」列出的格子，没有则写「暂无明显」，不要自编格子
 - 最后一行：以「→ {{格子}} 」开头，给行棋方下一步该想的关键问题
 - 每条要点必须包含与内容对应的 {{格子}} 标记，供用户在棋盘 hover 高亮`;
 
 const EXPLORE_TOPICS = `讲解重点（以「当前行棋方」为中心，不要写成双方平铺介绍）：
 1. 行棋方：明确谁该走、对方刚下了什么
-2. 若上一手质量不佳（失误/坏棋/漏着等）：解释那步为什么不好——丢了什么、给对方什么、错在哪种思路
-3. 正确思路：结合引擎 PV1（及必要时 PV2）说明行棋方此刻该走哪里、计划是什么；着法只能引用给出的线路，勿自创
-4. 可穿插局面结构（兵形、弱格、子力协调），但要服务于「错因 + 正确走法」，不要逐手罗列质量标签`;
+2. 强格：点名行棋方可利用的前哨（必要时也点对方前哨），用 {{格子}} 标出
+3. 弱格：点名双方阵营里无法用兵保护的空洞，用 {{格子}} 标出
+4. 进攻思路：结合引擎 PV1（及必要时 PV2）说明从哪条线、哪个方向施压；着法只能引用给出的线路，勿自创
+5. 若上一手质量不佳（失误/坏棋/漏着等）：解释那步为什么不好——丢了什么、给对方什么、错在哪种思路
+6. 不要逐手罗列质量标签`;
 
 function principlesText(ps: Principle[]): string {
   if (ps.length === 0) return '（无）';
@@ -285,8 +290,9 @@ ${lastMoveBlock(ctx.moveHistorySan, ctx.moveQualities, ctx.focusPly)}
 ${bestMoveHint(ctx.bestLinesSan, side)}
 引擎推荐线路（着法只能引用这些）：
 ${linesText(ctx.bestLinesSan)}
+${squareThemesPromptBlock(ctx.fen, ctx.sideToMove)}
 
-请按同样结构只讲**这一步之后**的局面，不要重复前面已讲过的计划。
+请按同样结构只讲**这一步之后**的局面：强格、弱格、进攻思路若有变化要更新，没变就不要重复。
 ${EXPLORE_HINT}`,
   };
 }
@@ -306,8 +312,9 @@ ${lastMoveBlock(ctx.moveHistorySan, ctx.moveQualities, ctx.focusPly)}
 ${bestMoveHint(ctx.bestLinesSan, side)}
 引擎推荐线路：
 ${linesText(ctx.bestLinesSan)}
+${squareThemesPromptBlock(ctx.fen, ctx.sideToMove)}
 
-请围绕**${side}该怎么走**做讲解：先交代行棋方，再说明上一手（若有问题）错在哪，最后用引擎线路讲正确思路与应走方向。
+请围绕**${side}该怎么走**做讲解：先交代行棋方，再讲强格、弱格与进攻思路；上一手若有问题要说明错在哪，进攻方向必须用引擎线路。
 ${EXPLORE_TOPICS}
 
 ${EXPLORE_HINT}` },

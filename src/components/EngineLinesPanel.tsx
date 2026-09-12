@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from 'react';
 import { MiniBoard } from './MiniBoard';
 import { fenAfterUciPlies } from '../chess/notation';
-import { useViewportSize } from '../platform';
+import { useTrainerViewport } from '../platform/trainerViewport';
 import { trainerLayoutMode } from './layout/TrainerLayout';
 
 export interface PvLineData {
@@ -49,7 +49,7 @@ function PvLineCardImpl({
   const phone = !fillHeight;
 
   return (
-    <div className={`touch-row flex min-h-0 gap-3 rounded-xl border border-line bg-white ${phone ? 'p-3' : 'h-full gap-2 p-2'}`}>
+    <div className={`touch-row flex min-h-0 gap-3 rounded-xl border border-line bg-ivory ${phone ? 'p-3' : 'h-full gap-2 p-2'}`}>
       <div className={fillHeight ? 'flex h-full max-w-[46%] shrink-0 items-center justify-center' : undefined}>
         <MiniBoard
           fen={viewed.fen}
@@ -65,7 +65,7 @@ function PvLineCardImpl({
             <span>{line.label}</span>
             {line.evalText && <span className="font-mono font-normal text-muted">{line.evalText}</span>}
           </div>
-          <p className={`font-mono leading-relaxed text-ink ${phone ? 'text-sm' : 'text-xs leading-snug line-clamp-3'}`}>
+          <p className={`font-mono leading-relaxed text-ink tabular-nums ${phone ? 'text-sm' : 'text-xs leading-snug line-clamp-3'}`}>
             {line.moves.join(' ') || '—'}
           </p>
           <p className={`mt-0.5 text-muted ${phone ? 'text-xs' : 'text-[10px]'}`}>
@@ -76,8 +76,8 @@ function PvLineCardImpl({
           <button type="button" className="btn btn-sm" onClick={() => setPlaying((p) => !p)}>
             {playing ? '暂停' : '播放'}
           </button>
-          <button type="button" className="btn btn-sm" disabled={step <= 0} onClick={() => { setPlaying(false); setStep((s) => Math.max(0, s - 1)); }}>←</button>
-          <button type="button" className="btn btn-sm" disabled={step >= maxStep} onClick={() => { setPlaying(false); setStep((s) => Math.min(maxStep, s + 1)); }}>→</button>
+          <button type="button" className="btn btn-sm" disabled={step <= 0} aria-label="上一步" onClick={() => { setPlaying(false); setStep((s) => Math.max(0, s - 1)); }}>←</button>
+          <button type="button" className="btn btn-sm" disabled={step >= maxStep} aria-label="下一步" onClick={() => { setPlaying(false); setStep((s) => Math.min(maxStep, s + 1)); }}>→</button>
           <button type="button" className="btn btn-sm" onClick={() => { setPlaying(false); setStep(maxStep > 0 ? 1 : 0); }}>复位</button>
         </div>
       </div>
@@ -98,15 +98,15 @@ function EngineLinesPanelImpl({
   orientation: 'white' | 'black';
   analyzing?: boolean;
 }) {
-  const { width, height } = useViewportSize();
-  const fillHeight = trainerLayoutMode(width, height) === 'wide';
+  const { width, layoutHeight } = useTrainerViewport();
+  const fillHeight = trainerLayoutMode(width, layoutHeight) === 'wide';
   const shown = lines.slice(0, 3);
 
   if (shown.length === 0) {
     if (!fillHeight) {
       return (
         <p className="px-1 py-3 text-sm leading-relaxed text-muted">
-          {analyzing ? '引擎正在算出候选着法…' : '走子后会出现候选着法'}
+          {analyzing ? '引擎正在算出候选着法…' : '先在棋盘走一步，这里会出现候选着法。'}
         </p>
       );
     }

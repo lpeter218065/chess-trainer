@@ -12,10 +12,11 @@ interface Props {
   onFocus: (f: CommentaryFocus | null) => void;
   focusMode: CommentaryFocusMode;
   activeFocus: CommentaryFocus | null;
+  suppressKeyError?: boolean;
 }
 
 /** 只有这个组件订阅讲解 / 追问的流式字段，流式期间页面其他部分不重渲染 */
-export function LessonCommentary({ store, activeRoundIndex, onSelectRound, onFocus, focusMode, activeFocus }: Props) {
+export function LessonCommentary({ store, activeRoundIndex, onSelectRound, onFocus, focusMode, activeFocus, suppressKeyError }: Props) {
   const intro = useSession(store, (s) => s.intro);
   const rounds = useSession(store, (s) => s.rounds);
   const streaming = useSession(store, (s) => s.streaming);
@@ -31,7 +32,7 @@ export function LessonCommentary({ store, activeRoundIndex, onSelectRound, onFoc
       rounds={rounds}
       activeRoundIndex={activeRoundIndex}
       streaming={streaming}
-      llmError={llmError}
+      llmError={suppressKeyError ? null : llmError}
       followUps={followUps}
       followUpStreaming={followUpStreaming}
       followUpDraft={followUpDraft}

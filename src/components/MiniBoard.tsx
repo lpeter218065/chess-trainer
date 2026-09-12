@@ -40,8 +40,8 @@ function MiniBoardImpl({
   const squareStyles = useMemo(() => {
     const s: Record<string, CSSProperties> = {};
     if (lastMove) {
-      s[lastMove.from] = { backgroundColor: 'rgba(255, 213, 79, 0.45)' };
-      s[lastMove.to] = { backgroundColor: 'rgba(255, 213, 79, 0.65)' };
+      s[lastMove.from] = { backgroundColor: 'rgba(154, 123, 69, 0.42)' };
+      s[lastMove.to] = { backgroundColor: 'rgba(154, 123, 69, 0.62)' };
     }
     return s;
   }, [lastMove]);
@@ -59,13 +59,22 @@ function MiniBoardImpl({
     showNotation: false,
   }), [boardId, fen, orientation, squareStyles, side]);
 
+  const orientationLabel = orientation === 'white' ? '白方视角' : '黑方视角';
+
   return (
     <div
       ref={hostRef}
+      role="img"
+      aria-label={`只读小棋盘，${orientationLabel}`}
       className={`flex items-center justify-center overflow-hidden ${className ?? 'aspect-square w-36 shrink-0'}`}
     >
       {side > 0 ? (
-        <div className="shrink-0 overflow-hidden rounded-md" style={{ width: side, height: side }}>
+        <div
+          aria-hidden="true"
+          inert
+          className="pointer-events-none shrink-0 overflow-hidden rounded-md"
+          style={{ width: side, height: side }}
+        >
           <Chessboard options={options} />
         </div>
       ) : null}

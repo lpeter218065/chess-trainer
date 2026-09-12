@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { StoreApi } from 'zustand';
 import type { Color } from '../lessons/schema';
 import { openingDrillById, type DrillStartMode, type OpeningDrill } from '../lessons/openingDrills';
@@ -14,6 +14,9 @@ import { settingsLlmPort } from '../llm/port';
 import { useSettings } from '../store/settings';
 import { LessonView } from './LessonPage';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { NavBack } from '../components/layout/NavBack';
+import { originFromState, originLabel, originPath } from '../components/layout/navOrigin';
+import { SettingsDialog } from '../components/SettingsDialog';
 
 type Phase = 'setup' | 'play';
 
@@ -26,6 +29,8 @@ function sessionLabel(title: string, color: Color, startMode: DrillStartMode, op
 export function OpeningDrillPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const origin = originFromState(location.state);
   const rawId = decodeURIComponent(id ?? '');
   const isCustom = rawId === CUSTOM_DRILL_ID;
   const catalogDrill = openingDrillById(rawId);
@@ -45,6 +50,7 @@ export function OpeningDrillPage() {
   const hasKey = useSettings((s) => Boolean(s.llm.apiKey));
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionParam = searchParams.get('session');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     setPhase('setup');
@@ -98,9 +104,9 @@ export function OpeningDrillPage() {
 
   if (!drill) {
     return (
-      <div className="p-8 text-sm text-ink">
-        找不到该开局练习。
-        <button type="button" className="ml-2 cursor-pointer text-felt underline" onClick={() => navigate('/')}>返回</button>
+      <div className="page-shell text-sm text-ink">
+        <NavBack onClick={() => navigate(originPath(origin))}>{originLabel(origin)}</NavBack>
+        <p className="mt-3">找不到该开局练习。</p>
       </div>
     );
   }
@@ -139,16 +145,16 @@ export function OpeningDrillPage() {
 
   if (phase === 'setup') {
     const selectCls = (on: boolean) =>
-      `min-h-11 cursor-pointer rounded-xl border px-3 py-2.5 text-left text-sm transition duration-200 ${
-        on ? 'border-felt bg-felt-fg text-ink shadow-[inset_0_0_0_1px_rgba(30,77,56,0.12)]' : 'border-line bg-white text-ink hover:border-wood/35'
+      `min-h-11 cursor-pointer rounded-xl border px-3 py-2.5 text-left text-sm ${
+        on ? 'border-walnut bg-cream text-ink' : 'border-line bg-ivory text-ink'
       }`;
     return (
-      <div className="mx-auto w-full max-w-xl px-4 py-8 sm:px-6">
-        <div className="mb-6 flex items-center gap-3 text-sm">
-          <Link to="/" className="inline-flex min-h-11 cursor-pointer items-center text-felt underline-offset-4 hover:underline">← 返回</Link>
+      <div className="page-shell mx-auto w-full max-w-xl">
+        <div className="mb-5 flex items-center gap-3 text-sm">
+          <NavBack to={originPath(origin)}>{originLabel(origin)}</NavBack>
           <span className="text-muted">开局练习</span>
         </div>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">{drill.title}</h1>
+        <h1 className="page-title">{drill.title}</h1>
         <p className="mt-2 text-sm text-muted">{drill.summary}</p>
         <p className="mt-3 text-sm leading-relaxed text-ink/80">{drill.theme}</p>
 
@@ -157,7 +163,7 @@ export function OpeningDrillPage() {
             <label htmlFor="drill-requirement" className="mb-2 block text-sm font-semibold text-ink">对手怎么走</label>
             <textarea
               id="drill-requirement"
-              className="h-28 w-full resize-none rounded-xl border border-line bg-white p-3 text-sm leading-relaxed text-ink outline-none transition duration-200 focus:border-felt"
+              className="field h-28 w-full resize-none p-3 text-sm leading-relaxed"
               placeholder="例如：伦敦应对西西里；对手走西班牙交换变例；黑棋走纳杰多夫"
               value={requirement}
               disabled={busy}
@@ -170,7 +176,7 @@ export function OpeningDrillPage() {
                   key={chip}
                   type="button"
                   className={`min-h-11 cursor-pointer rounded-full border px-3 text-sm transition duration-200 ${
-                    requirement === chip ? 'border-felt bg-felt text-felt-fg' : 'border-line bg-white text-muted hover:border-felt/40 hover:text-ink'
+                    requirement === chip ? 'border-walnut bg-walnut text-walnut-fg' : 'border-line bg-ivory text-muted'
                   }`}
                   onClick={() => { setRequirement(chip); setStartError(null); }}
                 >
@@ -178,7 +184,14 @@ export function OpeningDrillPage() {
                 </button>
               ))}
             </div>
-            {!hasKey && <p className="mt-3 text-sm text-danger">自定义开局需要 API Key，请先回首页打开设置。</p>}
+            {!hasKey && (
+              <div className="mt-3 flex flex-col items-start gap-2">
+                <p className="text-sm text-danger">自定义开局需要 API Key。</p>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => setSettingsOpen(true)}>
+                  去配置 Key
+                </button>
+              </div>
+            )}
           </section>
         )}
 
@@ -242,16 +255,17 @@ export function OpeningDrillPage() {
           </div>
         </section>
 
-        <div className="sticky bottom-0 -mx-4 mt-8 border-t border-line bg-paper/95 px-4 py-3 shadow-[0_-8px_20px_rgba(28,25,23,0.06)] backdrop-blur sm:-mx-6 sm:px-6">
+        <div className="sticky-cta">
           <button
             type="button"
-            className="btn btn-primary min-h-12 w-full rounded-xl"
+            className="btn btn-primary min-h-12 w-full"
             disabled={busy || (isCustom && !requirement.trim())}
             onClick={() => void start()}
           >
             {busy ? (isCustom ? '正在生成对手开局书…' : '正在准备对局…') : '开始练习'}
           </button>
         </div>
+        {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
       </div>
     );
   }
@@ -285,7 +299,12 @@ export function OpeningDrillPage() {
           }
         });
       }}
+      backLabel={origin === 'analyses' ? '我的分析' : active.title}
       onBack={() => {
+        if (origin === 'analyses') {
+          navigate('/analyses');
+          return;
+        }
         setPhase('setup');
         setStore(null);
       }}

@@ -1,23 +1,13 @@
-import { Link } from 'react-router-dom';
+import { NavBack } from '../components/layout/NavBack';
 import { APP_LICENSE, STOCKFISH_ENGINE_SOURCE, STOCKFISH_JS_SOURCE } from '../licenses/notice';
 import { APP_VERSION, THIRD_PARTY_LICENSES } from '../licenses/thirdParty.generated';
 
 export function LicensesPage() {
   return (
-    <div
-      className="mx-auto max-w-3xl px-4 py-8 sm:px-6"
-      style={{
-        paddingTop: 'max(2rem, env(safe-area-inset-top))',
-        paddingLeft: 'max(1rem, env(safe-area-inset-left))',
-        paddingRight: 'max(1rem, env(safe-area-inset-right))',
-        paddingBottom: 'max(2rem, env(safe-area-inset-bottom))',
-      }}
-    >
+    <div className="page-shell mx-auto max-w-3xl">
       <header className="mb-6">
-        <Link to="/" className="inline-flex min-h-11 items-center text-sm text-felt underline-offset-4 hover:underline">
-          ← 返回
-        </Link>
-        <h1 className="font-display mt-2 text-2xl font-semibold text-ink">开源许可</h1>
+        <NavBack to="/">首页</NavBack>
+        <h1 className="page-title mt-2 text-2xl">开源许可</h1>
         <p className="mt-2 text-sm text-muted">国际象棋训练 {APP_VERSION} · {APP_LICENSE}</p>
       </header>
 
@@ -43,7 +33,7 @@ export function LicensesPage() {
         <p className="mt-2 text-sm leading-relaxed text-muted">
           对局引擎为 Stockfish 的单线程 lite WASM 构建，许可为 GPLv3。
         </p>
-        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-felt">
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-walnut">
           <li>
             <a className="underline-offset-4 hover:underline" href={STOCKFISH_ENGINE_SOURCE} target="_blank" rel="noreferrer">
               官方引擎源码

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { nativeSseFetch, type NativeSsePlugin } from '../src/llm/nativeSse';
+import { createNativeSseFetch, nativeSseFetch, type NativeSsePlugin } from '../src/llm/nativeSse';
 import { streamChat } from '../src/llm/client';
 
 const cfg = { baseUrl: 'http://example.test/v1', apiKey: 'sk-test', model: 'gpt-x' };
@@ -32,6 +32,27 @@ function fakePlugin(): { plugin: NativeSsePlugin; ev: Ev; emitOpen: () => void; 
   };
 }
 
+/** 模拟 Capacitor registerPlugin 的 Proxy：未知属性（含 then）都会当成原生方法 */
+function thenablePlugin(inner: NativeSsePlugin): NativeSsePlugin {
+  return new Proxy(inner, {
+    get(target, prop, recv) {
+      if (prop in target) return Reflect.get(target, prop, recv);
+      return () => Promise.reject(new Error(`"NativeSse.${String(prop)}()" is not implemented on ios`));
+    },
+  });
+}
+
+describe('createNativeSseFetch', () => {
+  it('返回 fetch 实现而不是插件，不会去调 then()', async () => {
+    const { plugin } = fakePlugin();
+    const fetchImpl = await createNativeSseFetch({
+      openTimeoutMs: 1000,
+      loadPlugin: () => thenablePlugin(plugin),
+    });
+    expect(typeof fetchImpl).toBe('function');
+  });
+});
+
 describe('nativeSseFetch', () => {
   it('open 超时则拒绝，不永远卡住', async () => {
     const { plugin } = fakePlugin();
@@ -39,6 +60,29 @@ describe('nativeSseFetch', () => {
     await expect(
       fetchImpl('http://example.test/v1/chat/completions', { method: 'POST', body: '{}' }),
     ).rejects.toThrow(/超时|timed out|Timeout/i);
+  });
+
+  it('第一段读出后立刻连发后续 chunk，尾包不能丢', async () => {
+    const { plugin, emitOpen, emitChunk, emitEnd } = fakePlugin();
+    const out: string[] = [];
+    const running = (async () => {
+      for await (const d of streamChat(cfg, [{ role: 'user', content: 'hi' }], {
+        fetchImpl: nativeSseFetch(plugin, { openTimeoutMs: 1000 }),
+      })) {
+        out.push(d);
+      }
+    })();
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    emitOpen();
+    emitChunk('data: {"choices":[{"delta":{"content":"甲"}}]}\n\n');
+    for (let i = 0; i < 40 && out.length === 0; i++) await Promise.resolve();
+    expect(out).toEqual(['甲']);
+    emitChunk('data: {"choices":[{"delta":{"content":"乙"}}]}\n\n');
+    emitChunk('data: {"choices":[{"delta":{"content":"丙"}}]}\n\n');
+    emitChunk('data: [DONE]\n\n');
+    emitEnd();
+    await running;
+    expect(out).toEqual(['甲', '乙', '丙']);
   });
 
   it('第一段 SSE delta 在 end 之前就能 yield', async () => {

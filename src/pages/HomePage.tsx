@@ -8,9 +8,12 @@ import { useSettings } from '../store/settings';
 import { useGameSessions } from '../store/gameSessions';
 import { LessonCard } from '../components/LessonCard';
 import { SettingsDialog } from '../components/SettingsDialog';
+import { AppMark } from '../components/layout/AppMark';
 import { getEngine } from '../engine/getEngine';
 
 const SECTIONS: Section[] = ['opening', 'middlegame', 'endgame'];
+
+const BANNER_DISMISS_KEY = 'trainer-key-banner-dismissed';
 
 export function HomePage() {
   const records = useProgress((s) => s.records);
@@ -18,6 +21,22 @@ export function HomePage() {
   const metas = useGameSessions((s) => s.metas);
   const sessionCount = useMemo(() => Object.keys(metas).length, [metas]);
   const [open, setOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(() => {
+    try {
+      return sessionStorage.getItem(BANNER_DISMISS_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const showKeyBanner = !hasKey && !bannerDismissed;
+  const dismissBanner = () => {
+    setBannerDismissed(true);
+    try {
+      sessionStorage.setItem(BANNER_DISMISS_KEY, '1');
+    } catch {
+      /* private mode */
+    }
+  };
   // 空闲时预热引擎 Worker/WASM，进课程页时 getEngine() 直接复用同一个单例 Promise
   useEffect(() => {
     const warm = () => { void getEngine().catch(() => undefined); };
@@ -26,47 +45,57 @@ export function HomePage() {
     else setTimeout(warm, 0);
   }, []);
   return (
-    <div
-      className="mx-auto max-w-6xl px-4 py-8 sm:px-6"
-      style={{
-        paddingTop: 'max(2rem, env(safe-area-inset-top))',
-        paddingLeft: 'max(1rem, env(safe-area-inset-left))',
-        paddingRight: 'max(1rem, env(safe-area-inset-right))',
-        paddingBottom: 'max(2rem, env(safe-area-inset-bottom))',
-      }}
-    >
-      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-medium tracking-[0.16em] text-felt uppercase">Chess study</p>
-          <h1 className="font-display mt-1 text-3xl font-semibold tracking-tight text-ink">国际象棋训练</h1>
-          <p className="mt-2 w-full max-w-xl text-sm leading-relaxed text-pretty text-muted">对着引擎练开局与课题。讲解和判断都贴着当前局面。</p>
+    <div className="page-shell">
+      <header className="mb-8 flex flex-col gap-5">
+        <div>
+          <div className="flex items-center gap-3">
+            <AppMark size={36} />
+            <h1 className="page-title">国际象棋训练</h1>
+          </div>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-pretty text-muted">
+            对着引擎练开局与课题。讲解和判断都贴着当前局面。
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link to="/explore" state={{ from: 'home' }} className="btn btn-primary text-sm">
+            自由探索
+          </Link>
           <Link to="/analyses" className="btn text-sm">
             我的分析{sessionCount > 0 ? ` (${sessionCount})` : ''}
-          </Link>
-          <Link to="/explore" className="btn btn-primary text-sm">
-            自由探索
           </Link>
           <button
             type="button"
             className="btn text-sm"
             onClick={() => setOpen(true)}
           >
-            {hasKey ? '设置' : '设置 · 未配置 Key'}
+            设置
           </button>
         </div>
+        {showKeyBanner && (
+          <div className="key-banner" role="status">
+            <p className="min-w-0 flex-1 text-sm leading-relaxed text-ink">
+              讲解需要 API Key，只存在本机。
+            </p>
+            <button type="button" className="btn btn-primary btn-sm shrink-0" onClick={() => setOpen(true)}>
+              去配置
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm min-w-11 px-0 shrink-0" aria-label="关闭提示" onClick={dismissBanner}>
+              ×
+            </button>
+          </div>
+        )}
       </header>
 
       <section className="mb-10">
-        <h2 className="font-display text-xl font-semibold text-ink">开局练习</h2>
+        <h2 className="font-display text-lg font-semibold text-ink">开局练习</h2>
         <p className="mt-1 mb-4 text-sm text-muted">选开局，或自己写对手该走的变例。执白/执黑都可以练。</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {OPENING_DRILLS.map((d) => (
             <Link
               key={d.id}
               to={`/drill/${encodeURIComponent(d.id)}`}
-              className="block cursor-pointer rounded-xl border border-line bg-white p-4 shadow-[0_1px_0_rgba(28,25,23,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-felt/30 hover:shadow-sm"
+              state={{ from: 'home' }}
+              className="card-link"
             >
               <h3 className="font-medium text-ink">{d.title}</h3>
               <p className="mt-1 text-sm leading-relaxed text-muted">{d.summary}</p>
@@ -74,9 +103,10 @@ export function HomePage() {
           ))}
           <Link
             to="/drill/custom"
-            className="block cursor-pointer rounded-xl border border-dashed border-felt/35 bg-felt-fg/60 p-4 transition duration-200 hover:-translate-y-0.5 hover:border-felt"
+            state={{ from: 'home' }}
+            className="card-link border-dashed border-walnut/30"
           >
-            <p className="text-[11px] font-medium tracking-wide text-felt uppercase">自定义</p>
+            <p className="text-xs font-medium text-walnut">自定义</p>
             <h3 className="mt-0.5 font-medium text-ink">按要求练习</h3>
             <p className="mt-1 text-sm leading-relaxed text-muted">写对手开局或变例，例如「伦敦应对西西里」</p>
           </Link>
@@ -86,7 +116,7 @@ export function HomePage() {
       <div className="grid gap-8 md:grid-cols-3">
         {SECTIONS.map((sec) => (
           <section key={sec}>
-            <h2 className="font-display mb-3 text-xl font-semibold text-ink">{SECTION_LABEL[sec]}</h2>
+            <h2 className="font-display mb-3 text-lg font-semibold text-ink">{SECTION_LABEL[sec]}</h2>
             <div className="flex flex-col gap-2.5">
               {lessonsBySection(sec).map((l) => <LessonCard key={l.id} lesson={l} record={records[l.id]} />)}
             </div>
@@ -94,7 +124,7 @@ export function HomePage() {
         ))}
       </div>
       <footer className="mt-12 border-t border-line pt-4 text-sm text-muted">
-        <Link to="/licenses" className="text-felt underline-offset-4 hover:underline">开源许可</Link>
+        <Link to="/licenses" className="text-walnut underline-offset-4 hover:underline">开源许可</Link>
       </footer>
       {open && <SettingsDialog onClose={() => setOpen(false)} />}
     </div>

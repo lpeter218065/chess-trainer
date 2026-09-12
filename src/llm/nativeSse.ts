@@ -134,37 +134,33 @@ export function nativeSseFetch(
       }),
     ]);
     const stream = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (cancelled) return;
-        while (queue.length > 0) {
-          controller.enqueue(queue.shift()!);
-        }
-        if (failed) {
-          removeListeners();
-          controller.error(failed);
-          return;
-        }
-        if (ended) {
-          removeListeners();
-          controller.close();
-          return;
-        }
-        return new Promise<void>((resolve) => {
-          notify = () => {
-            notify = null;
-            resolve();
-          };
-        }).then(() => {
+      async pull(controller) {
+        for (;;) {
           if (cancelled) return;
-          while (queue.length > 0) controller.enqueue(queue.shift()!);
+          let got = false;
+          while (queue.length > 0) {
+            controller.enqueue(queue.shift()!);
+            got = true;
+          }
           if (failed) {
             removeListeners();
             controller.error(failed);
-          } else if (ended) {
+            return;
+          }
+          if (ended) {
             removeListeners();
             controller.close();
+            return;
           }
-        });
+          if (got) return;
+          await new Promise<void>((resolve) => {
+            notify = resolve;
+            if (queue.length > 0 || ended || failed || cancelled) {
+              notify = null;
+              resolve();
+            }
+          });
+        }
       },
       cancel() {
         cancelled = true;
@@ -178,7 +174,17 @@ export function nativeSseFetch(
   };
 }
 
-export async function getNativeSsePlugin(): Promise<NativeSsePlugin> {
-  const { registerPlugin } = await import('@capacitor/core');
-  return registerPlugin<NativeSsePlugin>('NativeSse');
+/**
+ * Capacitor 插件是 Proxy，会拦截 `then`。从 async 函数直接 `return plugin`
+ * 会被当成 thenable 去调 `NativeSse.then()`，真机报 not implemented，请求永远不 start。
+ * 这里只把插件交给 nativeSseFetch，向外返回普通 fetch 函数。
+ */
+export async function createNativeSseFetch(opts?: {
+  openTimeoutMs?: number;
+  loadPlugin?: () => NativeSsePlugin;
+}): Promise<typeof fetch> {
+  const plugin = opts?.loadPlugin
+    ? opts.loadPlugin()
+    : (await import('@capacitor/core')).registerPlugin<NativeSsePlugin>('NativeSse');
+  return nativeSseFetch(plugin, { openTimeoutMs: opts?.openTimeoutMs });
 }

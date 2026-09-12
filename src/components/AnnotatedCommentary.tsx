@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { focusFromLine, stripMarkers, type CommentaryFocus } from '../chess/commentaryMarkers';
 import { toggleFocus } from '../chess/commentaryFocus';
 
@@ -46,7 +46,7 @@ function FocusLine({
     <span
       role={interactive && focusMode === 'tap' ? 'button' : undefined}
       tabIndex={interactive && focusMode === 'tap' ? 0 : undefined}
-      className={`${className ?? ''} ${interactive ? 'cursor-pointer rounded decoration-felt/40 decoration-dotted underline-offset-2 hover:underline' : ''} ${sticky ? 'border border-felt bg-felt-fg' : ''}`}
+      className={`${className ?? ''} ${interactive ? 'cursor-pointer rounded decoration-brass/50 decoration-dotted underline-offset-2 hover:underline' : ''} ${sticky ? 'border border-walnut bg-cream' : ''}`}
       onMouseEnter={focusMode === 'hover' && interactive ? () => onFocus(focus) : undefined}
       onMouseLeave={focusMode === 'hover' && interactive ? () => onFocus(null) : undefined}
       onClick={focusMode === 'tap' && interactive ? onTap : undefined}
@@ -93,8 +93,8 @@ function StructuredAnnotated({
       {bullets.length > 0 && (
         <ul className="mb-2 list-none space-y-1.5 pl-0">
           {bullets.map((b, i) => (
-            <li key={i} className="flex gap-2 rounded px-1 hover:bg-felt-fg">
-              <span className="shrink-0 text-wood">•</span>
+            <li key={i} className="flex gap-2 rounded px-1 hover:bg-cream">
+              <span className="shrink-0 text-brass">•</span>
               <FocusLine text={b.text} {...lineProps} />
             </li>
           ))}
@@ -102,11 +102,11 @@ function StructuredAnnotated({
       )}
       {next.length > 0 && (
         <p className="text-muted">
-          <span className="mr-1 text-felt">→</span>
+          <span className="mr-1 text-walnut">→</span>
           <FocusLine text={next.map((n) => n.text).join(' ')} {...lineProps} />
         </p>
       )}
-      {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-felt align-middle" />}
+      {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-walnut align-middle" />}
       {showHoverHint && <p className="mt-2 text-xs text-muted">点带标记的句子，棋盘会标出对应格子；再点一次取消</p>}
     </div>
   );
@@ -136,8 +136,12 @@ export function AnnotatedCommentary({
   focusMode?: CommentaryFocusMode;
   activeFocus?: CommentaryFocus | null;
 }) {
+  const previousTextRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
-    onFocus(null);
+    const previousText = previousTextRef.current;
+    previousTextRef.current = text;
+    if (previousText === undefined || !text.startsWith(previousText)) onFocus(null);
   }, [text]);
 
   if (!text && !streaming) return <p className="text-sm text-muted">{placeholder ?? ''}</p>;
@@ -156,7 +160,7 @@ export function AnnotatedCommentary({
   return (
     <p className="whitespace-pre-wrap text-sm leading-relaxed">
       <FocusLine text={text} onFocus={onFocus} focusMode={focusMode} activeFocus={activeFocus} />
-      {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-felt align-middle" />}
+      {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-walnut align-middle" />}
     </p>
   );
 }

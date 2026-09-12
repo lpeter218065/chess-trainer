@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { FollowUpComposer } from '../src/components/FollowUpChat';
+import { FollowUpChat, FollowUpComposer } from '../src/components/FollowUpChat';
 
 type KeyOptions = {
   isComposing?: boolean;
@@ -23,9 +23,18 @@ function dispatchEnter(input: HTMLInputElement, options: KeyOptions = {}): void 
   input.dispatchEvent(event);
 }
 
-afterEach(cleanup);
+function setWindowSize(width: number, height: number): void {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: height });
+}
+
+afterEach(() => {
+  cleanup();
+  setWindowSize(1280, 800);
+});
 
 describe('FollowUpComposer interaction', () => {
+  beforeEach(() => setWindowSize(1280, 800));
   it('does not submit during Chinese IME composition, then submits normal Enter once', () => {
     const onAsk = vi.fn();
     render(<FollowUpComposer onAsk={onAsk} />);
@@ -58,5 +67,67 @@ describe('FollowUpComposer interaction', () => {
     fireEvent.click(send);
     fireEvent.click(chip);
     expect(onAsk).not.toHaveBeenCalled();
+  });
+
+  it('keeps suggestion chips visible on wide screens', () => {
+    render(<FollowUpComposer onAsk={vi.fn()} />);
+    expect(screen.getByRole('button', { name: '对方的计划是什么？' })).toBeTruthy();
+  });
+
+  it('hides compact suggestion chips until the composer is focused', () => {
+    setWindowSize(390, 844);
+    render(<FollowUpComposer onAsk={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '对方的计划是什么？' })).toBeNull();
+
+    fireEvent.focus(screen.getByPlaceholderText('继续问教练…'));
+    expect(screen.getByRole('button', { name: '对方的计划是什么？' })).toBeTruthy();
+  });
+
+  it('sends a compact chip while the input stays focused', () => {
+    setWindowSize(390, 844);
+    const onAsk = vi.fn();
+    render(<FollowUpComposer onAsk={onAsk} />);
+    const input = screen.getByPlaceholderText('继续问教练…');
+    fireEvent.focus(input);
+    const chip = screen.getByRole('button', { name: '对方的计划是什么？' });
+    fireEvent.mouseDown(chip);
+    fireEvent.click(chip);
+    expect(onAsk).toHaveBeenCalledTimes(1);
+    expect(onAsk).toHaveBeenCalledWith('对方的计划是什么？');
+  });
+});
+
+describe('FollowUpChat hideComposer', () => {
+  it('hides the empty follow-up chrome when the composer lives in the layout footer', () => {
+    render(
+      <FollowUpChat
+        turns={[]}
+        streaming={false}
+        hideComposer
+        onAsk={vi.fn()}
+        onFocus={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('继续追问')).toBeNull();
+    expect(screen.queryByPlaceholderText('继续问教练…')).toBeNull();
+  });
+
+  it('still shows prior answers without a second composer when hideComposer', () => {
+    render(
+      <FollowUpChat
+        turns={[
+          { role: 'user', content: '为什么走这里' },
+          { role: 'assistant', content: '控制中心' },
+        ]}
+        streaming={false}
+        hideComposer
+        onAsk={vi.fn()}
+        onFocus={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('继续追问')).toBeTruthy();
+    expect(screen.getByText('为什么走这里')).toBeTruthy();
+    expect(screen.getByText('控制中心')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('继续问教练…')).toBeNull();
   });
 });

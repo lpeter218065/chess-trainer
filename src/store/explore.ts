@@ -101,6 +101,7 @@ function sideEval(whiteCp: number, side: 'w' | 'b'): number {
 
 export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { llmDebounceMs?: number }): StoreApi<ExploreState> {
   let analyzeToken = 0;
+  let displayedAnalysisAbort: AbortController | null = null;
   let llmAbort: AbortController | null = null;
   let followUpAbort: AbortController | null = null;
   const analyzeDebouncer = createDebouncer(ANALYZE_DEBOUNCE_MS);
@@ -112,6 +113,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
   return createStore<ExploreState>((set, get, api) => {
     const cancelPending = () => {
       analyzeDebouncer.cancel();
+      displayedAnalysisAbort?.abort();
       assessmentDebouncer.cancel();
       llmAbort?.abort();
       followUpAbort?.abort();
@@ -140,23 +142,35 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
 
     const activeSans = () => pathSans(get().tree, get().path);
 
+    const analyzeDisplayedPosition = (fen: string, token: number) => {
+      displayedAnalysisAbort?.abort();
+      const controller = new AbortController();
+      displayedAnalysisAbort = controller;
+      const pending = engine.analyze(fen, 3, { signal: controller.signal });
+      void pending.then((analysis) => {
+        if (token !== analyzeToken || controller.signal.aborted) return;
+        set({ analysis, evalCp: whiteEval(analysis), analyzing: false });
+      }, (e: unknown) => {
+        if (token !== analyzeToken || controller.signal.aborted) return;
+        set({ analyzing: false, error: `分析失败：${(e as Error).message}` });
+      });
+      return pending;
+    };
+
     const analyzeAtPlyNow = async (ply: number) => {
       const token = ++analyzeToken;
       const { startFen, path, tree } = get();
       const sans = pathSans(tree, path);
       const { fen } = fenAfterPlies(startFen, sans, ply);
       set({ analyzing: true, error: null });
-      try {
-        const analysis = await engine.analyze(fen, 3);
-        if (token !== analyzeToken) return;
-        set({ analysis, evalCp: whiteEval(analysis), analyzing: false });
-      } catch (e) {
-        if (token !== analyzeToken) return;
-        set({ analyzing: false, error: `分析失败：${(e as Error).message}` });
-      }
+      // Errors are published by analyzeDisplayedPosition; callers wait for settlement.
+      await analyzeDisplayedPosition(fen, token).catch(() => undefined);
     };
 
     const scheduleAnalyzeAtPly = (ply: number) => {
+      ++analyzeToken;
+      displayedAnalysisAbort?.abort();
+      set({ analyzing: true, analysis: null, error: null });
       analyzeDebouncer.schedule(() => void analyzeAtPlyNow(ply));
     };
 
@@ -554,17 +568,22 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
         const token = ++analyzeToken;
         set({ tree, path, reviewDepth: null, analysis: null, analyzing: true, error: null });
 
-        // 2) 后台补写：质量与后续走子无关，必须写完；末端 MultiPV 只有最新一步才跑
+        const tipFen = fenAfterPlies(s0.startFen, pathSans(tree, path), path.length).fen;
+        const displayedAnalysis = analyzeDisplayedPosition(tipFen, token);
+
+        // Publish the current position first; historical move grades still finish in the background.
         void (async () => {
           try {
-            const before = analysisBefore ?? (await engine.analyze(fen, 3));
+            const before = analysisBefore ?? (await engine.analyze(fen, 3, { priority: 'background' }));
             const knownCp = evalAfterFromLines(before, userUci);
             const evalAfterWhite =
               knownCp !== null
                 ? sideToMove(fenAfter) === 'w'
                   ? knownCp
                   : -knownCp
-                : whiteEval(await engine.analyze(fenAfter, 1));
+                : whiteEval(await (tipFen === fenAfter
+                  ? displayedAnalysis.catch(() => engine.analyze(fenAfter, 1, { priority: 'background' }))
+                  : engine.analyze(fenAfter, 1, { priority: 'background' })));
             const quality = classifyMove({
               evalBefore: sideEval(whiteEval(before), movingSide),
               evalAfter: sideEval(evalAfterWhite, movingSide),
@@ -574,17 +593,9 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
             if (get().tree.nodes[nodeId]) {
               set((st) => ({ tree: setNodeQuality(st.tree, nodeId, quality) }));
             }
-            if (token !== analyzeToken) return; // 更新的走子/切步已接手
-            set({ evalCp: evalAfterWhite });
-
-            // 3) 末端局面的 MultiPV（path 可能比刚落子的节点更深）
-            const tipFen = fenAfterPlies(s0.startFen, pathSans(tree, path), path.length).fen;
-            const analysis = await engine.analyze(tipFen, 3);
-            if (token !== analyzeToken) return;
-            set({ analysis, evalCp: whiteEval(analysis), analyzing: false });
           } catch (e) {
             if (token !== analyzeToken) return;
-            set({ analyzing: false, error: `分析失败：${(e as Error).message}` });
+            set({ error: `着法评分失败：${(e as Error).message}` });
           }
         })();
         return true;

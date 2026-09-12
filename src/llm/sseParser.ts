@@ -34,12 +34,17 @@ export function createSseParser() {
       buffer += chunk.replace(/\r\n/g, '\n');
       const out: string[] = [];
       let idx: number;
-      while ((idx = buffer.indexOf('\n\n')) !== -1) {
-        const raw = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        const p = parseEvent(raw);
+      // 标准 SSE 用空行分事件；不少代理只发 data: …\n，再等 \n\n 会把后半段卡在 buffer 里
+      while ((idx = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        if (line === '' || line.startsWith(':')) continue;
+        const p = parseEvent(line);
         if (p !== null) out.push(p);
-        if (finished) break;
+        if (finished) {
+          buffer = '';
+          break;
+        }
       }
       return out;
     },

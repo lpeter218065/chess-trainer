@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useGameSessions, migrateGameSessions } from '../src/store/gameSessions';
+import { useGameSessions, migrateGameSessions, resolveCurrentSessionId } from '../src/store/gameSessions';
 import { createSnapshotStorage, __setSnapshotStorageForTests, SNAPSHOT_KEY_PREFIX } from '../src/store/snapshotStorage';
 import { createEmptyTree } from '../src/chess/moveTree';
 import { START_FEN } from '../src/chess/pgn';
@@ -22,7 +22,7 @@ describe('gameSessions', () => {
   beforeEach(() => {
     backend = asyncBackend();
     __setSnapshotStorageForTests(createSnapshotStorage(backend));
-    useGameSessions.setState({ metas: {}, activeExploreId: null, activeLessonId: null });
+    useGameSessions.setState({ metas: {}, activeExploreId: null, activeLessonId: null, currentSessionId: null });
   });
 
   it('newExplore sets active and saveAs clones', () => {
@@ -135,9 +135,35 @@ describe('gameSessions', () => {
     );
     expect((migrated as { exploreData?: unknown }).exploreData).toBeUndefined();
     expect(migrated.metas.e1.summary).toBe('起始局面');
+    expect(migrated.currentSessionId).toBe('e1');
     useGameSessions.setState(migrated);
     expect(useGameSessions.getState().getExploreSnapshot('e1')?.commentary).toBe('old');
     await useGameSessions.getState().flushPendingSave();
     expect(backend.m.has(`${SNAPSHOT_KEY_PREFIX}e1`)).toBe(true);
+  });
+
+  it('同一时刻只有一条会话是当前：后激活的覆盖标记', () => {
+    const gs = useGameSessions.getState();
+    const explore = gs.newExplore('探索局');
+    const lesson = gs.newLesson('opening/italian-game', '意大利');
+    expect(useGameSessions.getState().currentSessionId).toBe(lesson);
+    gs.setActiveExplore(explore);
+    expect(useGameSessions.getState().currentSessionId).toBe(explore);
+    gs.setActiveLesson(lesson);
+    expect(useGameSessions.getState().currentSessionId).toBe(lesson);
+    expect(resolveCurrentSessionId(useGameSessions.getState())).toBe(lesson);
+  });
+
+  it('未记录 currentSessionId 时，按活动项里更新更晚的一条标记', () => {
+    const id = resolveCurrentSessionId({
+      metas: {
+        e1: { id: 'e1', kind: 'explore', title: 'e', updatedAt: '2026-09-10T15:21:00.000Z' },
+        l1: { id: 'l1', kind: 'lesson', title: 'l', updatedAt: '2026-09-10T14:07:00.000Z', lessonId: 'x' },
+      },
+      activeExploreId: 'e1',
+      activeLessonId: 'l1',
+      currentSessionId: null,
+    });
+    expect(id).toBe('e1');
   });
 });

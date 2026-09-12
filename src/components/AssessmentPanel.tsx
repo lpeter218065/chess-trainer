@@ -23,9 +23,9 @@ export function AssessmentPanel({
   onRetry?: () => void;
 }) {
   return (
-    <section className="rounded-xl border border-felt/25 bg-felt-fg/70 p-3">
+    <section className="rounded-xl border border-line bg-cream/70 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold tracking-wide text-felt uppercase">局面判断</h3>
+        <h3 className="text-xs font-semibold text-walnut">局面判断</h3>
         <div className="flex gap-1" role="group" aria-label="判断视角">
           {([['w', '白棋'], ['b', '黑棋']] as const).map(([c, label]) => (
             <button

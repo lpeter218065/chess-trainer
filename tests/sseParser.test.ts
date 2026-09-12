@@ -30,6 +30,16 @@ describe('createSseParser', () => {
     ]);
     expect(p.done).toBe(false);
   });
+  it('只有单行换行的 data 也立刻产出，不等第二个空行', () => {
+    const p = createSseParser();
+    expect(p.push('data: {"choices":[{"delta":{"content":"甲"}}]}\n')).toEqual([
+      '{"choices":[{"delta":{"content":"甲"}}]}',
+    ]);
+    expect(p.push('data: {"choices":[{"delta":{"content":"乙"}}]}\n')).toEqual([
+      '{"choices":[{"delta":{"content":"乙"}}]}',
+    ]);
+    expect(p.done).toBe(false);
+  });
   it('flush 输出未以空行结尾的尾部', () => {
     const p = createSseParser();
     p.push('data: {"x":1}');

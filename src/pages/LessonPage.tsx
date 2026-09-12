@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { lessonById } from '../lessons';
@@ -12,7 +12,11 @@ import { DIFFICULTIES, difficultyById, type DifficultyId } from '../engine/diffi
 import { Board } from '../components/Board';
 import { EvalBar } from '../components/EvalBar';
 import { MoveList } from '../components/MoveList';
-import { SessionBar } from '../components/SessionBar';
+import { SessionList } from '../components/SessionBar';
+import { Sheet } from '../components/Sheet';
+import { SettingsDialog } from '../components/SettingsDialog';
+import { MissingKeyEmpty } from '../components/MissingKeyEmpty';
+import { originFromState, originLabel, originPath } from '../components/layout/navOrigin';
 import { fenAfterPlies, formatEval, navigatePly, sideToMove, sanToUci, uciToSan, type PlyNav } from '../chess/notation';
 import { annotationsFromAnalysis, annotationsFromFocus, mergeAnnotations, roundIndexForPly, type BoardAnnotations } from '../chess/annotations';
 import { AnnotationLegend } from '../components/AnnotationLegend';
@@ -22,8 +26,9 @@ import type { CommentaryFocus } from '../chess/commentaryMarkers';
 import { scoreToCp } from '../chess/quality';
 import type { Analysis } from '../engine/engineService';
 import { LoadingScreen } from '../components/LoadingScreen';
-import { BoardToolbar, ToolToggle } from '../components/BoardToolbar';
+import { BoardToolbar, BoardStatus, ToolToggle, BoardMoreMenu } from '../components/BoardToolbar';
 import { TrainerLayout } from '../components/layout/TrainerLayout';
+import { NavBack } from '../components/layout/NavBack';
 import { LessonCommentary } from '../components/lesson/LessonCommentary';
 import { LessonHint } from '../components/lesson/LessonHint';
 import { LessonSummary } from '../components/lesson/LessonSummary';
@@ -36,6 +41,8 @@ import type { CommentaryFocusMode } from '../components/AnnotatedCommentary';
 export function LessonPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const origin = originFromState(location.state);
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionParam = searchParams.get('session');
   const lesson = lessonById(decodeURIComponent(id ?? ''));
@@ -72,9 +79,9 @@ export function LessonPage() {
 
   if (!lesson) {
     return (
-      <div className="p-8 text-sm text-ink">
-        找不到课程。
-        <button type="button" className="ml-2 text-felt underline-offset-4 hover:underline" onClick={() => navigate('/')}>返回</button>
+      <div className="page-shell text-sm text-ink">
+        <NavBack onClick={() => navigate(originPath(origin))}>{originLabel(origin)}</NavBack>
+        <p className="mt-3">找不到这节课。</p>
       </div>
     );
   }
@@ -93,7 +100,8 @@ export function LessonPage() {
           if (snap && gs.activeLessonId) gs.saveLessonSnapshot(gs.activeLessonId, snap);
         });
       }}
-      onBack={() => navigate('/')}
+      onBack={() => navigate(originPath(origin))}
+      backLabel={originLabel(origin)}
     />
   );
 }
@@ -193,6 +201,7 @@ export function LessonView({
   difficultyId,
   onDifficulty,
   onBack,
+  backLabel = '首页',
   difficultyOptions,
   difficultyLabel = '难度',
 }: {
@@ -202,6 +211,7 @@ export function LessonView({
   difficultyId: DifficultyId;
   onDifficulty(id: DifficultyId): void;
   onBack(): void;
+  backLabel?: string;
   /** 开局练习等场景可传入仅两档对手 */
   difficultyOptions?: typeof DIFFICULTIES;
   difficultyLabel?: string;
@@ -237,6 +247,10 @@ export function LessonView({
   const [showCandidates, setShowCandidates] = useState(false);
   const [showAssessment, setShowAssessment] = useState(false);
   const [hoverFocus, setHoverFocus] = useState<CommentaryFocus | null>(null);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [flipped, setFlipped] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const hasKey = useSettings((s) => Boolean(s.llm.apiKey));
   const focusMode: CommentaryFocusMode = useHasHover() ? 'hover' : 'tap';
   const ply = reviewPly === null ? livePly : Math.min(reviewPly, livePly);
   const isLive = reviewPly === null || reviewPly >= livePly;
@@ -262,6 +276,7 @@ export function LessonView({
 
   useEffect(() => {
     setReviewPly(null);
+    setFlipped(false);
   }, [expectedLessonId]);
 
   useEffect(() => {
@@ -383,7 +398,13 @@ export function LessonView({
     return <LoadingScreen message="正在准备课程…" />;
   }
   const currentLesson = sessionLesson;
-  const orientation = currentLesson.playerColor === 'w' ? 'white' : 'black';
+  const playerOrientation = currentLesson.playerColor === 'w' ? 'white' : 'black';
+  const orientation = flipped
+    ? (playerOrientation === 'white' ? 'black' : 'white')
+    : playerOrientation;
+  const difficultyChoices = difficultyOptions ?? DIFFICULTIES;
+  const difficultyName = difficultyChoices.find((d) => d.id === difficultyId)?.label
+    ?? difficultyById(difficultyId).label;
   const startMoveNumber = Number(currentLesson.startFen.split(' ')[5] ?? '1');
   const analyzing = phase === 'preparing' || phase === 'engineThinking';
   const introThread = lessonFollowUpThreadId('intro');
@@ -402,17 +423,61 @@ export function LessonView({
   ) : undefined;
 
   return (
+    <>
     <TrainerLayout
       storageKey="lesson"
+      detailDefault={hasKey ? 'half' : 'collapsed'}
+      collapsedAction={!hasKey ? <MissingKeyEmpty compact onConfigure={() => setSettingsOpen(true)} /> : undefined}
       header={
-        <header className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <button type="button" className="inline-flex min-h-11 items-center text-felt underline-offset-4 hover:underline" onClick={onBack}>← 课程列表</button>
-          <span className="font-display font-semibold text-ink">{currentLesson.title}</span>
-          <div className="flex flex-wrap items-center gap-2">
-            <SessionBar
+        <header>
+          <div className="trainer-nav text-sm">
+            <div className="trainer-nav-start">
+              <NavBack onClick={onBack}>{backLabel}</NavBack>
+            </div>
+          </div>
+          <h1 className="sr-only">{currentLesson.title}</h1>
+          <button
+            type="button"
+            className="lesson-summary"
+            aria-haspopup="dialog"
+            aria-expanded={contextOpen}
+            onClick={() => setContextOpen(true)}
+          >
+            <span className="lesson-summary-text">
+              <span className="lesson-summary-title">{currentLesson.title}</span>
+              <span className="lesson-summary-meta"> · {difficultyName}</span>
+            </span>
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden="true">
+              <path fill="currentColor" d="M4.2 6.2 8 10l3.8-3.8 1.1 1.1L8 12.2 3.1 7.3l1.1-1.1Z" />
+            </svg>
+          </button>
+          <Sheet open={contextOpen} onClose={() => setContextOpen(false)} title={currentLesson.title} titleId="lesson-setup-title">
+            <p className="mb-4 text-sm leading-relaxed text-muted">{currentLesson.theme}</p>
+            <h3 className="mb-2 text-sm font-semibold text-ink">{difficultyLabel}</h3>
+            <div className="mb-5 flex flex-wrap gap-2">
+              {difficultyChoices.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  className={`btn btn-sm ${d.id === difficultyId ? 'btn-on' : 'text-muted'}`}
+                  aria-pressed={d.id === difficultyId}
+                  onClick={() => onDifficulty(d.id)}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <h3 className="mb-2 text-sm font-semibold text-ink">会话</h3>
+            <SessionList
               kind="lesson"
-              onSwitch={(sid) => void switchLessonSession(sid, lesson, difficultyById(difficultyId))}
-              onNew={() => void newLessonSession(lesson, difficultyById(difficultyId))}
+              onSwitch={(sid) => {
+                void switchLessonSession(sid, lesson, difficultyById(difficultyId));
+                setContextOpen(false);
+              }}
+              onNew={() => {
+                void newLessonSession(lesson, difficultyById(difficultyId));
+                setContextOpen(false);
+              }}
               onSaveAs={(title) => {
                 const gs = useGameSessions.getState();
                 const from = gs.activeLessonId;
@@ -421,15 +486,10 @@ export function LessonView({
                 if (snap) gs.saveLessonSnapshot(from, snap);
                 const id = gs.saveAsLesson(from, title);
                 if (id) void switchLessonSession(id, lesson, difficultyById(difficultyId));
+                setContextOpen(false);
               }}
             />
-            <label className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap text-sm text-muted">
-              {difficultyLabel}
-              <select className="field min-h-11 w-auto py-0 text-sm" value={difficultyId} onChange={(e) => onDifficulty(e.target.value as DifficultyId)}>
-                {(difficultyOptions ?? DIFFICULTIES).map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
-              </select>
-            </label>
-          </div>
+          </Sheet>
         </header>
       }
       board={
@@ -457,24 +517,67 @@ export function LessonView({
             <EvalBar cp={evalCp} playerIsWhite={currentLesson.playerColor === 'w'} />
           </div>
           <BoardToolbar>
-            <button type="button" className="btn btn-sm" disabled={ply <= 0} aria-label="上一步" onClick={() => stepReview('back')}>←</button>
-            <button type="button" className="btn btn-sm" disabled={isLive} aria-label="下一步" onClick={() => stepReview('forward')}>→</button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={ply <= 0}
+              aria-label="上一步"
+              title={ply <= 0 ? '已经是起始局面' : '上一步'}
+              onClick={() => stepReview('back')}
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={isLive}
+              aria-label="下一步"
+              title={isLive ? '已经是最新局面' : '下一步'}
+              onClick={() => stepReview('forward')}
+            >
+              →
+            </button>
             <ToolToggle
               pressed={showAnnotations}
               disabled={!boardAnnotations}
               title={!boardAnnotations ? '还没有分析' : undefined}
               onClick={() => setShowAnnotations((v) => !v)}
             >
-              {showAnnotations ? '隐藏分析' : '显示分析'}
+              分析
             </ToolToggle>
-            <ToolToggle pressed={showCandidates} onClick={() => setShowCandidates((v) => !v)}>
-              候选招法
-            </ToolToggle>
-            <ToolToggle pressed={showAssessment} onClick={() => setShowAssessment((v) => !v)}>
-              局面判断
-            </ToolToggle>
-            <button type="button" className="btn btn-sm" disabled={!canTakeback} title={!canTakeback ? '没有可退的一步' : '撤销你的上一手，之后着法会丢掉'} onClick={() => void onTakeback()}>退一步</button>
-            <span className="min-w-0 truncate text-xs text-muted">
+            <BoardMoreMenu
+              items={[
+                {
+                  id: 'candidates',
+                  label: '候选',
+                  pressed: showCandidates,
+                  onClick: () => setShowCandidates((v) => !v),
+                },
+                {
+                  id: 'assessment',
+                  label: '局面',
+                  pressed: showAssessment,
+                  disabled: !hasKey,
+                  reason: !hasKey ? '请先配置 API Key' : undefined,
+                  onClick: () => setShowAssessment((v) => !v),
+                },
+                {
+                  id: 'flip',
+                  label: '翻转',
+                  pressed: flipped,
+                  onClick: () => setFlipped((v) => !v),
+                },
+                {
+                  id: 'takeback',
+                  label: '退一步',
+                  disabled: !canTakeback,
+                  reason: !canTakeback ? '没有可退的一手' : undefined,
+                  onClick: () => void onTakeback(),
+                },
+              ]}
+            />
+          </BoardToolbar>
+          <BoardStatus error={engineError}>
               {!isLive && canPlayHere && '回看中 · 点子或拖子改走（之后着法将丢弃）'}
               {!isLive && !canPlayHere && '回看中 · 轮到对方'}
               {isLive && phase === 'preparing' && '引擎分析中…可继续走'}
@@ -482,9 +585,7 @@ export function LessonView({
               {isLive && phase === 'userTurn' && '轮到你走 · 点子或拖子'}
               {isLive && phase === 'finished' && '训练结束'}
               {showCandidates && !hasCandidates && (analyzing ? ' · 候选分析中…' : ' · 这一步暂无候选')}
-              {engineError && <span className="ml-2 text-danger" role="alert">{engineError}</span>}
-            </span>
-          </BoardToolbar>
+          </BoardStatus>
           {history.length > 0 && (
             <div className="lesson-moves max-h-28 shrink-0 overflow-y-auto">
               <MoveList
@@ -504,13 +605,14 @@ export function LessonView({
         {
           id: 'guide',
           label: '讲解',
+          disabled: !hasKey,
           content: (
             <div className="flex min-h-0 flex-col">
               <div className="shrink-0 border-b border-line px-3 py-2">
                 <h2 className="text-sm font-semibold text-ink">{currentLesson.title}</h2>
                 <p className="text-xs text-muted">{currentLesson.theme}</p>
               </div>
-              {phase !== 'finished' && (
+              {phase !== 'finished' && hasKey && (
                 <div className="shrink-0 border-b border-line px-3 py-2">
                   <LessonHint store={store} disabled={!isLive || phase !== 'userTurn'} />
                 </div>
@@ -525,7 +627,12 @@ export function LessonView({
                 </div>
               )}
               <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                {showAssessment && (
+                {!hasKey && (
+                  <div className="mb-3">
+                    <MissingKeyEmpty onConfigure={() => setSettingsOpen(true)} />
+                  </div>
+                )}
+                {showAssessment && hasKey && (
                   <div className="mb-3">
                     <LessonAssessment
                       store={store}
@@ -544,6 +651,7 @@ export function LessonView({
                   onFocus={setHoverFocus}
                   focusMode={focusMode}
                   activeFocus={hoverFocus}
+                  suppressKeyError={!hasKey}
                 />
               </div>
             </div>
@@ -554,5 +662,7 @@ export function LessonView({
         <LessonFollowUpComposer store={store} threadId={composerThread} />
       ) : undefined}
     />
+    {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+    </>
   );
 }

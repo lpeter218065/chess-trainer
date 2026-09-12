@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeAll, afterEach, beforeEach } from 'vitest';
-import { act, render, cleanup } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { mockChessboardWithCounter, installDomPolyfills } from './helpers/renderProbe';
@@ -80,5 +80,32 @@ describe('ExploreView 流式期间的渲染', () => {
     });
     expect(store.getState().commentary).toBe('第一段第二段');
     expect(probe.count()).toBe(before);
+  });
+
+  it('places the follow-up composer in the pinned footer after commentary', async () => {
+    const llm: LlmPort = {
+      async *stream() {
+        yield '中心争夺';
+      },
+    };
+    const store = createExploreStore(fakeEngine(), llm, { llmDebounceMs: 0 });
+    store.getState().loadStart();
+    await waitIdle(store);
+
+    const { container } = render(
+      <MemoryRouter>
+        <ExploreView store={store} />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      await store.getState().requestCommentary();
+    });
+
+    const input = screen.getByPlaceholderText('继续问教练…');
+    const footer = container.querySelector('[data-testid="trainer-footer"]');
+    expect(footer).toBeTruthy();
+    expect(footer?.contains(input)).toBe(true);
+    expect(container.querySelector('.trainer-panel-scroll')?.contains(footer as Node)).toBe(false);
   });
 });

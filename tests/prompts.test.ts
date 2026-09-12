@@ -68,8 +68,26 @@ describe('prompts', () => {
     expect(u).toContain('引擎认为黑方此刻应优先考虑：Nc6');
     expect(u).toContain('错在哪');
     expect(u).toContain('正确思路');
+    expect(u).toContain('强格');
+    expect(u).toContain('弱格');
+    expect(u).toContain('进攻思路');
     expect(u).toContain('{{');
     expect(u).toContain('不要逐手罗列质量标签');
+  });
+  it('explore 局面讲解带入算出的强格弱格', () => {
+    const m = buildExploreMessages({
+      fen: 'rn3rk1/1pq2ppp/p2pbb2/4p3/4P3/1NNQ4/PPP1BPPP/2KR3R w - - 4 12',
+      moveHistorySan: [],
+      moveQualities: [],
+      evalCp: 40,
+      sideToMove: 'w',
+      bestLinesSan: [['Nd5'], ['Kb1']],
+      focusPly: 0,
+    });
+    const u = m[1].content;
+    expect(u).toContain('行棋方强格');
+    expect(u).toContain('d5');
+    expect(u).toContain('进攻思路');
   });
   it('explore 起始局面无上一手', () => {
     const m = buildExploreMessages({

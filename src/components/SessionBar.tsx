@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useGameSessions, formatSessionTime, type SessionKind, type SessionMeta } from '../store/gameSessions';
+import { useMemo, useState, type ReactNode } from 'react';
+import { useGameSessions, formatSessionTime, resolveCurrentSessionId, type SessionKind, type SessionMeta } from '../store/gameSessions';
+import { Sheet } from './Sheet';
 
 function listForKind(metas: Record<string, SessionMeta>, kind: SessionKind): SessionMeta[] {
   return Object.values(metas)
@@ -31,143 +32,131 @@ function IconChevron() {
   );
 }
 
-export function SessionBar({
+function IconMore() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-5 w-5" aria-hidden="true">
+      <circle cx="3.5" cy="8" r="1.35" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.35" fill="currentColor" />
+      <circle cx="12.5" cy="8" r="1.35" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function SessionList({
   kind,
   onSwitch,
   onNew,
   onSaveAs,
+  extra,
 }: {
   kind: SessionKind;
   onSwitch: (id: string) => void;
   onNew: () => void;
   onSaveAs: (title: string) => void;
+  extra?: ReactNode;
 }) {
   const metasMap = useGameSessions((s) => s.metas);
   const activeId = useGameSessions((s) => (kind === 'explore' ? s.activeExploreId : s.activeLessonId));
+  const currentId = useGameSessions(resolveCurrentSessionId);
   const rename = useGameSessions((s) => s.rename);
   const deleteSession = useGameSessions((s) => s.deleteSession);
 
   const metas = useMemo(() => listForKind(metasMap, kind), [metasMap, kind]);
   const active = useMemo(() => metas.find((m) => m.id === activeId) ?? null, [metas, activeId]);
 
-  const [open, setOpen] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
 
   const newLabel = kind === 'explore' ? '起始局面' : '重开本局';
 
   return (
-    <div ref={rootRef} className="relative flex items-center text-xs">
-      <button
-        type="button"
-        className="btn max-w-[14rem] gap-1 truncate text-left text-xs"
-        title={active?.title ?? '会话'}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="min-w-0 truncate">{active?.title ?? '会话'}</span>
-        <IconChevron />
-      </button>
-
-      {open && (
-        <div className="menu absolute right-0 top-full z-20 mt-1.5 max-h-80 w-72 py-1" role="menu">
-          {metas.length === 0 && <p className="px-3 py-3 text-muted">暂无会话</p>}
-          {metas.map((m) => (
-            <div key={m.id} className={`flex items-center gap-1 px-1.5 py-0.5 ${m.id === activeId ? 'bg-felt-fg' : ''}`}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={m.id === activeId}
-                className="min-h-11 min-w-0 flex-1 truncate rounded-md px-2 text-left hover:bg-cream/50"
-                onClick={() => { onSwitch(m.id); setOpen(false); }}
-              >
-                <span className="block truncate font-medium text-ink">{m.title}</span>
-                <span className="text-[11px] text-muted">{formatSessionTime(m.updatedAt)}</span>
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost min-h-11 min-w-11 px-0 text-muted"
-                aria-label={`重命名 ${m.title}`}
-                title="重命名"
-                onClick={() => {
-                  const t = window.prompt('重命名会话', m.title);
-                  if (t) rename(m.id, t);
-                }}
-              >
-                <IconPencil />
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost min-h-11 min-w-11 px-0 text-muted hover:text-danger"
-                aria-label={`删除 ${m.title}`}
-                title="删除"
-                onClick={() => {
-                  if (!window.confirm(`删除会话「${m.title}」？`)) return;
-                  deleteSession(m.id);
-                  if (m.id === activeId) {
-                    const next = listForKind(useGameSessions.getState().metas, kind)[0];
-                    if (next) onSwitch(next.id);
-                    else onNew();
-                  }
-                }}
-              >
-                <IconClose />
-              </button>
-            </div>
-          ))}
-          <div className="mt-1 border-t border-line py-1">
-            <button
-              type="button"
-              className="flex min-h-11 w-full items-center px-3 text-left text-sm text-ink hover:bg-cream/40"
-              role="menuitem"
-              onClick={() => { setOpen(false); onNew(); }}
-            >
-              {newLabel}
-            </button>
-            <button
-              type="button"
-              className="flex min-h-11 w-full items-center px-3 text-left text-sm text-ink hover:bg-cream/40"
-              role="menuitem"
-              onClick={() => { setTitleDraft(`${active?.title ?? '会话'} 副本`); setSaveAsOpen(true); setOpen(false); }}
-            >
-              另存为…
-            </button>
-          </div>
-        </div>
+    <div>
+      {metas.length === 0 && (
+        <p className="px-1 py-3 text-sm text-muted">还没有会话。可在下面新建。</p>
       )}
+      <ul className="flex flex-col gap-0.5">
+        {metas.map((m) => (
+          <li key={m.id} className={`flex items-center gap-1 rounded-lg px-1 py-0.5 ${m.id === activeId ? 'bg-cream' : ''}`}>
+            <button
+              type="button"
+              className="min-h-11 min-w-0 flex-1 truncate rounded-md px-2 text-left"
+              onClick={() => onSwitch(m.id)}
+            >
+              <span className="flex items-center gap-2">
+                <span className="min-w-0 truncate font-medium text-ink">{m.title}</span>
+                {m.id === currentId && <span className="shrink-0 text-[11px] text-walnut">当前</span>}
+              </span>
+              <span className="text-xs text-muted">{formatSessionTime(m.updatedAt)}</span>
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost min-h-11 min-w-11 px-0 text-muted"
+              aria-label={`重命名 ${m.title}`}
+              title="重命名"
+              onClick={() => {
+                const t = window.prompt('重命名会话', m.title);
+                if (t) rename(m.id, t);
+              }}
+            >
+              <IconPencil />
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost min-h-11 min-w-11 px-0 text-muted hover:text-danger"
+              aria-label={`删除 ${m.title}`}
+              title="删除"
+              onClick={() => {
+                if (!window.confirm(`删除会话「${m.title}」？`)) return;
+                deleteSession(m.id);
+                if (m.id === activeId) {
+                  const next = listForKind(useGameSessions.getState().metas, kind)[0];
+                  if (next) onSwitch(next.id);
+                  else onNew();
+                }
+              }}
+            >
+              <IconClose />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 border-t border-line pt-1">
+        <button
+          type="button"
+          className="flex min-h-11 w-full items-center px-2 text-left text-sm text-ink"
+          role="menuitem"
+          onClick={onNew}
+        >
+          {newLabel}
+        </button>
+        <button
+          type="button"
+          className="flex min-h-11 w-full items-center px-2 text-left text-sm text-ink"
+          role="menuitem"
+          onClick={() => {
+            setTitleDraft(`${active?.title ?? '会话'} 副本`);
+            setSaveAsOpen(true);
+          }}
+        >
+          另存为…
+        </button>
+        {extra}
+      </div>
 
       {saveAsOpen && (
         <div
-          className="fixed inset-0 z-30 flex items-center justify-center bg-ink/50 p-4"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-ink/50 p-4"
           onClick={() => setSaveAsOpen(false)}
           role="presentation"
         >
           <div
-            className="w-full max-w-sm rounded-2xl bg-paper p-5 shadow-xl"
+            className="sheet p-5"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="save-as-title"
           >
-            <h3 id="save-as-title" className="font-display mb-3 text-lg font-semibold text-ink">另存为</h3>
+            <h3 id="save-as-title" className="page-title mb-3 text-xl">另存为</h3>
             <label htmlFor="save-as-title-input" className="mb-1.5 block text-sm font-medium text-ink">名称</label>
             <input
               id="save-as-title-input"
@@ -176,7 +165,7 @@ export function SessionBar({
               onChange={(e) => setTitleDraft(e.target.value)}
               autoFocus
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                   e.preventDefault();
                   onSaveAs(titleDraft);
                   setSaveAsOpen(false);
@@ -203,3 +192,96 @@ export function SessionBar({
     </div>
   );
 }
+
+export function SessionBar({
+  kind,
+  onSwitch,
+  onNew,
+  onSaveAs,
+  trigger = 'title',
+  extra,
+  open: openProp,
+  onOpenChange,
+}: {
+  kind: SessionKind;
+  onSwitch: (id: string) => void;
+  onNew: () => void;
+  onSaveAs: (title: string) => void;
+  trigger?: 'title' | 'more' | 'none';
+  extra?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const metasMap = useGameSessions((s) => s.metas);
+  const activeId = useGameSessions((s) => (kind === 'explore' ? s.activeExploreId : s.activeLessonId));
+  const metas = useMemo(() => listForKind(metasMap, kind), [metasMap, kind]);
+  const active = useMemo(() => metas.find((m) => m.id === activeId) ?? null, [metas, activeId]);
+
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp ?? uncontrolledOpen;
+  const setOpen = (next: boolean) => {
+    onOpenChange?.(next);
+    if (openProp === undefined) setUncontrolledOpen(next);
+  };
+
+  const closeAnd = (fn: () => void) => {
+    fn();
+    setOpen(false);
+  };
+
+  const sheet = (
+    <Sheet open={open} onClose={() => setOpen(false)} title="会话" titleId="session-sheet-title">
+      <SessionList
+        kind={kind}
+        onSwitch={(id) => closeAnd(() => onSwitch(id))}
+        onNew={() => closeAnd(onNew)}
+        onSaveAs={(title) => {
+          onSaveAs(title);
+          setOpen(false);
+        }}
+        extra={extra}
+      />
+    </Sheet>
+  );
+
+  if (trigger === 'none') {
+    return sheet;
+  }
+
+  if (trigger === 'more') {
+    return (
+      <div className="relative flex items-center">
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost min-h-11 min-w-11 px-0"
+          aria-label="会话"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          <IconMore />
+        </button>
+        {sheet}
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex items-center text-sm">
+      <button
+        type="button"
+        className="session-trigger btn max-w-[9.5rem] gap-1 truncate text-left text-sm"
+        title={active?.title ?? '会话'}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="min-w-0 truncate">{active?.title ?? '会话'}</span>
+        <IconChevron />
+      </button>
+      {sheet}
+    </div>
+  );
+}
+
+

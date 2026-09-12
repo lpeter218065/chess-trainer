@@ -7,10 +7,10 @@ import type { CommentaryFocus } from '../chess/commentaryMarkers';
 import { EMPTY_TAP, tapMoveReducer, type TapState } from '../chess/tapMove';
 import { isIncrementalFen } from '../chess/notation';
 
-const HOVER_SQUARE = 'rgba(30, 77, 56, 0.38)';
-const HOVER_ARROW = '#1e4d38';
-const SELECT_SQUARE = 'rgba(30, 77, 56, 0.48)';
-const TARGET_DOT = 'radial-gradient(circle, rgba(30,77,56,0.42) 19%, transparent 21%)';
+const HOVER_SQUARE = 'rgba(61, 41, 30, 0.38)';
+const HOVER_ARROW = '#3d291e';
+const SELECT_SQUARE = 'rgba(154, 123, 69, 0.48)';
+const TARGET_DOT = 'radial-gradient(circle, rgba(61,41,30,0.42) 19%, transparent 21%)';
 
 export interface BoardProps {
   fen: string;
@@ -122,8 +122,8 @@ function BoardImpl({
       s[sq] = { backgroundColor: HOVER_SQUARE };
     }
     if (lastMove) {
-      s[lastMove.from] = { backgroundColor: 'rgba(255, 213, 79, 0.45)' };
-      s[lastMove.to] = { backgroundColor: 'rgba(255, 213, 79, 0.65)' };
+      s[lastMove.from] = { backgroundColor: 'rgba(154, 123, 69, 0.42)' };
+      s[lastMove.to] = { backgroundColor: 'rgba(154, 123, 69, 0.62)' };
     }
     if (tap.selected) {
       s[tap.selected] = { backgroundColor: SELECT_SQUARE };
@@ -187,7 +187,7 @@ function BoardImpl({
     >
       {side > 0 && (
         <div
-          className="shadow-[0_0_0_4px_#8b5e34,0_12px_28px_rgba(28,25,23,0.16)]"
+          className="chess-board-frame"
           style={{ width: side, height: side }}
         >
           <Chessboard options={options} />

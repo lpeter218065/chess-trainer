@@ -112,6 +112,7 @@ afterEach(() => {
 beforeEach(() => {
   sessionStorage.clear();
   setWindowSize(390, 844);
+  installAnimationFrameHarness();
 });
 
 describe('TrainerLayout responsive interaction', () => {
@@ -227,5 +228,99 @@ describe('TrainerLayout responsive interaction', () => {
     expect(document.activeElement).toBe(analysisTab);
     expect(windowBoardHandler).not.toHaveBeenCalled();
 
+  });
+
+  it('pins the follow-up footer outside the panel scroll', () => {
+    const { container } = renderLayout({
+      panels: [
+        { id: 'analysis', label: '分析', content: <div style={{ height: 1600 }}>分析内容</div> },
+        { id: 'history', label: '历史', content: <div>历史内容</div> },
+      ],
+      footer: <input aria-label="继续问教练" />,
+      footerPanelId: 'analysis',
+    });
+    const input = screen.getByLabelText('继续问教练');
+    const footer = container.querySelector('[data-testid="trainer-footer"]') as HTMLElement;
+    const scroll = container.querySelector('.trainer-panel-scroll') as HTMLElement;
+
+    expect(footer).toBeTruthy();
+    expect(footer.contains(input)).toBe(true);
+    expect(scroll.contains(footer)).toBe(false);
+    expect(footer.closest('.trainer-detail')).toBeTruthy();
+    expect(footer.hidden).toBe(false);
+
+    fireEvent.click(screen.getByRole('tab', { name: '历史' }));
+    expect(footer.hidden).toBe(true);
+    expect((input as HTMLInputElement).isConnected).toBe(true);
+  });
+
+  it('keeps the follow-up footer on the compact candidates tab', () => {
+    const { container } = renderLayout({
+      leftPanel: <div>候选着法</div>,
+      panels: [
+        { id: 'analysis', label: '分析', content: <div>分析内容</div> },
+        { id: 'import', label: '导入', content: <div>导入内容</div> },
+      ],
+      footer: <input aria-label="继续问教练" />,
+      footerPanelId: 'analysis',
+    });
+    const footer = container.querySelector('[data-testid="trainer-footer"]') as HTMLElement;
+
+    expect(screen.getByRole('tab', { name: '分析' }).getAttribute('aria-selected')).toBe('true');
+    expect(footer.hidden).toBe(false);
+
+    fireEvent.click(screen.getByRole('tab', { name: '候选' }));
+    expect(screen.getByRole('tab', { name: '候选' }).getAttribute('aria-selected')).toBe('true');
+    expect(footer.hidden).toBe(false);
+
+    fireEvent.click(screen.getByRole('tab', { name: '导入' }));
+    expect(footer.hidden).toBe(true);
+  });
+
+  it('collapses the stacked detail sheet on handle tap so the board can grow', () => {
+    const { container } = renderLayout({
+      panels: [{ id: 'analysis', label: '分析', content: <div>分析内容</div> }],
+    });
+    const shell = () => container.querySelector('.trainer-shell') as HTMLElement;
+    expect(shell().getAttribute('data-detail')).toBe('half');
+    const handle = screen.getByRole('button', { name: '折叠讲解区' });
+    fireEvent.pointerDown(handle, { clientY: 500 });
+    fireEvent.pointerUp(handle, { clientY: 500 });
+    expect(shell().getAttribute('data-detail')).toBe('collapsed');
+    expect(screen.getByRole('button', { name: '展开讲解区' })).toBeTruthy();
+  });
+
+  it('stays on the analysis tab when candidates appear', () => {
+    const panels: TrainerPanel[] = [
+      { id: 'analysis', label: '分析', content: <div>分析内容</div> },
+    ];
+    const view = render(
+      <TrainerLayout
+        header={<div>Header</div>}
+        board={<StatefulBoard />}
+        panels={panels}
+        footer={<input aria-label="继续问教练" />}
+        footerPanelId="analysis"
+        storageKey="trainer-layout-interaction"
+      />,
+    );
+
+    expect(screen.queryByRole('tab', { name: '候选' })).toBeNull();
+    expect(screen.getByRole('tab', { name: '分析' }).getAttribute('aria-selected')).toBe('true');
+
+    view.rerender(
+      <TrainerLayout
+        header={<div>Header</div>}
+        board={<StatefulBoard />}
+        leftPanel={<div>候选着法</div>}
+        panels={panels}
+        footer={<input aria-label="继续问教练" />}
+        footerPanelId="analysis"
+        storageKey="trainer-layout-interaction"
+      />,
+    );
+
+    expect(screen.getByRole('tab', { name: '候选' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '分析' }).getAttribute('aria-selected')).toBe('true');
   });
 });

@@ -71,6 +71,8 @@ interface GameSessionsState {
   metas: Record<string, SessionMeta>;
   activeExploreId: string | null;
   activeLessonId: string | null;
+  /** 全局当前会话：探索与课程同时存在活动项时，列表只标这一条为「当前」 */
+  currentSessionId: string | null;
 
   list(kind: SessionKind): SessionMeta[];
   ensureExploreActive(defaultTitle?: string): string;
@@ -97,6 +99,30 @@ export interface PersistedGameSessions {
   metas: Record<string, SessionMeta>;
   activeExploreId: string | null;
   activeLessonId: string | null;
+  currentSessionId: string | null;
+}
+
+/** 同一时刻只允许一条会话是当前：优先 last-activated，否则取两个活动项里更新更晚的。 */
+export function resolveCurrentSessionId(s: {
+  metas: Record<string, SessionMeta>;
+  activeExploreId: string | null;
+  activeLessonId: string | null;
+  currentSessionId?: string | null;
+}): string | null {
+  const claimed = s.currentSessionId;
+  if (claimed) {
+    const meta = s.metas[claimed];
+    if (meta?.kind === 'explore' && s.activeExploreId === claimed) return claimed;
+    if (meta?.kind === 'lesson' && s.activeLessonId === claimed) return claimed;
+  }
+  const explore = s.activeExploreId ? s.metas[s.activeExploreId] : undefined;
+  const lesson = s.activeLessonId ? s.metas[s.activeLessonId] : undefined;
+  const exploreOk = explore?.kind === 'explore' ? explore : undefined;
+  const lessonOk = lesson?.kind === 'lesson' ? lesson : undefined;
+  if (exploreOk && lessonOk) {
+    return exploreOk.updatedAt >= lessonOk.updatedAt ? exploreOk.id : lessonOk.id;
+  }
+  return exploreOk?.id ?? lessonOk?.id ?? null;
 }
 
 function nowIso() {
@@ -135,10 +161,18 @@ export function migrateGameSessions(persisted: unknown, version: number): Persis
       if (metas[id]) metas[id] = { ...metas[id], summary: lessonSummary(snap) };
     }
   }
+  const activeExploreId = p.activeExploreId ?? null;
+  const activeLessonId = p.activeLessonId ?? null;
   return {
     metas,
-    activeExploreId: p.activeExploreId ?? null,
-    activeLessonId: p.activeLessonId ?? null,
+    activeExploreId,
+    activeLessonId,
+    currentSessionId: resolveCurrentSessionId({
+      metas,
+      activeExploreId,
+      activeLessonId,
+      currentSessionId: p.currentSessionId ?? null,
+    }),
   };
 }
 
@@ -148,6 +182,7 @@ export const useGameSessions = create<GameSessionsState>()(
       metas: {},
       activeExploreId: null,
       activeLessonId: null,
+      currentSessionId: null,
 
       list(kind) {
         return Object.values(get().metas)
@@ -157,18 +192,24 @@ export const useGameSessions = create<GameSessionsState>()(
 
       ensureExploreActive(defaultTitle) {
         const s = get();
-        if (s.activeExploreId && s.metas[s.activeExploreId]?.kind === 'explore') return s.activeExploreId;
+        if (s.activeExploreId && s.metas[s.activeExploreId]?.kind === 'explore') {
+          if (s.currentSessionId !== s.activeExploreId) set({ currentSessionId: s.activeExploreId });
+          return s.activeExploreId;
+        }
         return get().newExplore(defaultTitle);
       },
 
       ensureLessonActive(lessonId, defaultTitle) {
         const s = get();
         const active = s.activeLessonId ? s.metas[s.activeLessonId] : null;
-        if (active?.kind === 'lesson' && active.lessonId === lessonId) return s.activeLessonId!;
+        if (active?.kind === 'lesson' && active.lessonId === lessonId) {
+          if (s.currentSessionId !== s.activeLessonId) set({ currentSessionId: s.activeLessonId });
+          return s.activeLessonId!;
+        }
         // Prefer most recent session for this lesson
         const existing = get().list('lesson').find((m) => m.lessonId === lessonId);
         if (existing) {
-          set({ activeLessonId: existing.id });
+          set({ activeLessonId: existing.id, currentSessionId: existing.id });
           return existing.id;
         }
         return get().newLesson(lessonId, defaultTitle);
@@ -219,7 +260,7 @@ export const useGameSessions = create<GameSessionsState>()(
           summary: exploreSummary(copy),
         };
         snapshotStorage.set(id, copy);
-        set({ metas: { ...s.metas, [id]: meta }, activeExploreId: id });
+        set({ metas: { ...s.metas, [id]: meta }, activeExploreId: id, currentSessionId: id });
         return id;
       },
 
@@ -240,7 +281,7 @@ export const useGameSessions = create<GameSessionsState>()(
           summary: lessonSummary(copy),
         };
         snapshotStorage.set(id, copy);
-        set({ metas: { ...s.metas, [id]: meta }, activeLessonId: id });
+        set({ metas: { ...s.metas, [id]: meta }, activeLessonId: id, currentSessionId: id });
         return id;
       },
 
@@ -256,12 +297,12 @@ export const useGameSessions = create<GameSessionsState>()(
 
       setActiveExplore(id) {
         if (get().metas[id]?.kind !== 'explore') return;
-        set({ activeExploreId: id });
+        set({ activeExploreId: id, currentSessionId: id });
       },
 
       setActiveLesson(id) {
         if (get().metas[id]?.kind !== 'lesson') return;
-        set({ activeLessonId: id });
+        set({ activeLessonId: id, currentSessionId: id });
       },
 
       deleteSession(id) {
@@ -269,14 +310,20 @@ export const useGameSessions = create<GameSessionsState>()(
         set((s) => {
           const metas = { ...s.metas };
           delete metas[id];
-          let { activeExploreId, activeLessonId } = s;
+          let { activeExploreId, activeLessonId, currentSessionId } = s;
           if (activeExploreId === id) {
             activeExploreId = Object.values(metas).find((m) => m.kind === 'explore')?.id ?? null;
           }
           if (activeLessonId === id) {
             activeLessonId = Object.values(metas).find((m) => m.kind === 'lesson')?.id ?? null;
           }
-          return { metas, activeExploreId, activeLessonId };
+          currentSessionId = resolveCurrentSessionId({
+            metas,
+            activeExploreId,
+            activeLessonId,
+            currentSessionId: currentSessionId === id ? null : currentSessionId,
+          });
+          return { metas, activeExploreId, activeLessonId, currentSessionId };
         });
       },
 
@@ -291,6 +338,7 @@ export const useGameSessions = create<GameSessionsState>()(
         set((s) => ({
           metas: { ...s.metas, [id]: meta },
           activeExploreId: id,
+          currentSessionId: id,
         }));
         return id;
       },
@@ -308,6 +356,7 @@ export const useGameSessions = create<GameSessionsState>()(
         set((s) => ({
           metas: { ...s.metas, [id]: meta },
           activeLessonId: id,
+          currentSessionId: id,
         }));
         return id;
       },
@@ -328,12 +377,13 @@ export const useGameSessions = create<GameSessionsState>()(
     }),
     {
       name: 'chess-trainer-game-sessions',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => gameSessionStorage),
       partialize: (s) => ({
         metas: s.metas,
         activeExploreId: s.activeExploreId,
         activeLessonId: s.activeLessonId,
+        currentSessionId: s.currentSessionId,
       }),
       migrate: (p, v) => migrateGameSessions(p, v) as unknown as GameSessionsState,
     },

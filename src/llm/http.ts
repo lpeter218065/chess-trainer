@@ -118,8 +118,8 @@ export const llmFetch: typeof fetch = createLlmFetch({
     }
   },
   nativeFetch: async () => {
-    const { getNativeSsePlugin, nativeSseFetch } = await import('./nativeSse');
-    return nativeSseFetch(await getNativeSsePlugin());
+    const { createNativeSseFetch } = await import('./nativeSse');
+    return createNativeSseFetch();
   },
   webFetch: (input, init) => fetch(input, init),
 });

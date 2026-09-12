@@ -28,7 +28,7 @@ function StructuredText({ text, streaming }: { text: string; streaming: boolean 
         <ul className="mb-2 list-none space-y-1 pl-0">
           {bullets.map((b, i) => (
             <li key={i} className="flex gap-2">
-              <span className="shrink-0 text-wood">•</span>
+              <span className="shrink-0 text-brass">•</span>
               <span>{b.text}</span>
             </li>
           ))}
@@ -36,11 +36,11 @@ function StructuredText({ text, streaming }: { text: string; streaming: boolean 
       )}
       {next.length > 0 && (
         <p className="text-muted">
-          <span className="mr-1 text-felt">→</span>
+          <span className="mr-1 text-walnut">→</span>
           {next.map((n) => n.text).join(' ')}
         </p>
       )}
-      {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-felt align-middle" />}
+      {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-walnut align-middle" />}
     </div>
   );
 }
@@ -51,7 +51,7 @@ export function StreamText({ text, streaming, placeholder }: { text: string; str
   return (
     <p className="whitespace-pre-wrap text-sm leading-relaxed">
       {text}
-      {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-felt align-middle" />}
+      {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-walnut align-middle" />}
     </p>
   );
 }

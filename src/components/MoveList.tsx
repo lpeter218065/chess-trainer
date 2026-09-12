@@ -61,7 +61,7 @@ function MoveListImpl({
       <button
         type="button"
         aria-current={selected ? 'step' : undefined}
-        className={`touch-row min-h-8 rounded px-1.5 text-left ${selected ? 'bg-select' : 'hover:bg-cream/50'}`}
+        className={`touch-row min-h-8 rounded px-1.5 text-left ${selected ? 'bg-select' : ''}`}
         onClick={() => onSelectPly(move.ply)}
       >
         {move.san}
@@ -128,7 +128,7 @@ function MoveButton({
   return (
     <button
       type="button"
-      className={`touch-row min-h-8 rounded px-1 font-mono text-sm ${selectedId === id ? 'bg-select' : 'hover:bg-cream/50'}`}
+      className={`touch-row min-h-8 rounded px-1 font-mono text-sm ${selectedId === id ? 'bg-select' : ''}`}
       onClick={() => onSelect(id)}
     >
       {node.san}

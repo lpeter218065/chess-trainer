@@ -6,12 +6,13 @@ export function LessonCard({ lesson, record }: { lesson: Lesson; record?: Progre
   return (
     <Link
       to={`/lesson/${encodeURIComponent(lesson.id)}`}
-      className="block cursor-pointer rounded-xl border border-line bg-white p-3.5 transition duration-200 hover:border-felt/30 hover:shadow-sm"
+      state={{ from: 'home' }}
+      className="card-link p-3.5"
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-medium leading-snug text-ink">{lesson.title}</h3>
         {record?.completed && (
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${record.clean ? 'bg-felt text-felt-fg' : 'bg-cream text-wood'}`}>
+          <span className={`badge shrink-0 ${record.clean ? 'badge-baize' : 'badge-brass'}`}>
             {record.clean ? '干净完成' : '已完成'}
           </span>
         )}

@@ -18,8 +18,19 @@ function fakeEngine(): EnginePort {
       const bm = first(fen);
       return { fen, bestMove: bm, lines: [{ depth: 16, multipv: 1, score: { cp: 20 }, pv: [bm] }] };
     },
-    async opponentMove(fen) { return first(fen); },
+    async opponentMove(fen, _difficulty) { return first(fen); },
     dispose() {},
+  };
+}
+
+function fakeEngineSlowOpponent(delayMs: number): EnginePort {
+  const base = fakeEngine();
+  return {
+    ...base,
+    async opponentMove(fen, difficulty) {
+      await new Promise((r) => setTimeout(r, delayMs));
+      return base.opponentMove(fen, difficulty);
+    },
   };
 }
 
@@ -32,6 +43,7 @@ function fakeLlm(chunks = ['讲', '解']): LlmPort & { calls: number } {
 }
 
 const lesson = lessonById('opening/italian-game')!;
+const lessonOther = lessonById('opening/london')!;
 const diff = difficultyById('medium');
 
 describe('session store', () => {
@@ -91,6 +103,24 @@ describe('session store', () => {
     expect(s.result).not.toBeNull();
     expect(s.summary).toBe('讲解');
     expect(finished!.id).toBe(short.id);
+  });
+
+  it('playUserMove 在 start 重启后不污染新课状态', async () => {
+    const store = createSessionStore({
+      llmDebounceMs: 0,
+      engine: fakeEngineSlowOpponent(100),
+      llm: fakeLlm(),
+    });
+    await store.getState().start(lesson, diff);
+    await store.getState().whenIdle();
+    const m = new Chess(store.getState().fen).moves({ verbose: true })[0]!;
+    const moveP = store.getState().playUserMove(m.from, m.to);
+    await store.getState().start(lessonOther, diff);
+    await moveP;
+    await store.getState().whenIdle();
+    expect(store.getState().lesson?.id).toBe(lessonOther.id);
+    expect(store.getState().rounds.length).toBe(0);
+    expect(store.getState().fen).toBe(lessonOther.startFen);
   });
 
   it('hint 一级出文字、二级出箭头并标记 hintUsed', async () => {
@@ -191,7 +221,7 @@ describe('session store', () => {
         const bm = first(fen);
         return { fen, bestMove: bm, lines: [{ depth: 16, multipv: 1, score: { cp: 20 }, pv: [bm] }] };
       },
-      async opponentMove(fen) { return first(fen); },
+      async opponentMove(fen, _difficulty) { return first(fen); },
       dispose() {},
     };
     const london = drillToLesson(openingDrillById('london')!, 'b', 'from-start');

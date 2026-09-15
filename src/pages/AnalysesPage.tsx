@@ -113,7 +113,11 @@ export function AnalysesPage() {
   useEffect(() => {
     if (!menuId) return;
     const onDoc = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuId(null);
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (menuRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest('[aria-haspopup="menu"]')) return;
+      setMenuId(null);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMenuId(null);
@@ -237,7 +241,7 @@ export function AnalysesPage() {
                 <button
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink px-1 text-base leading-none"
-                  aria-label="Clear search"
+                  aria-label={t('analyses.clearSearch')}
                   onClick={() => setQuery('')}
                 >
                   ×

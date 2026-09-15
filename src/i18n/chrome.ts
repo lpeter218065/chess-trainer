@@ -191,6 +191,7 @@ export const chrome = {
   'analyses.title': { zh: '我的分析', en: 'My analyses' },
   'analyses.search': { zh: '搜索标题', en: 'Search titles' },
   'analyses.searchPlaceholder': { zh: '搜索标题…', en: 'Search titles…' },
+  'analyses.clearSearch': { zh: '清除搜索', en: 'Clear search' },
   'analyses.all': { zh: '全部', en: 'All' },
   'analyses.explore': { zh: '探索', en: 'Explore' },
   'analyses.lesson': { zh: '课程', en: 'Lessons' },

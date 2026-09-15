@@ -29,6 +29,19 @@ afterEach(() => {
 });
 
 describe('AnalysesPage list actions', () => {
+  it('toggles the overflow menu closed when the trigger is pressed again', () => {
+    render(
+      <MemoryRouter>
+        <AnalysesPage />
+      </MemoryRouter>,
+    );
+    const trigger = screen.getByRole('button', { name: '更多操作 当前局面' });
+    fireEvent.click(trigger);
+    expect(screen.getByRole('menuitem', { name: '删除' })).toBeTruthy();
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('menuitem', { name: '删除' })).toBeNull();
+  });
+
   it('keeps the current marker and moves delete into the overflow menu', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(

@@ -106,6 +106,8 @@ export const useSettings = create<SettingsState>()(
         const envDefaults = envLlm();
         const stored = p.llm;
         const preferEnv = Boolean(import.meta.env.DEV && envDefaults.apiKey);
+        const legacyKey = typeof stored?.apiKey === 'string' ? stored.apiKey : '';
+        if (legacyKey && !preferEnv) void setApiKey(legacyKey).catch(() => undefined);
         return {
           ...current,
           ...p,
@@ -116,7 +118,7 @@ export const useSettings = create<SettingsState>()(
           llm: {
             ...current.llm,
             ...stored,
-            apiKey: preferEnv ? envDefaults.apiKey : (stored?.apiKey || envDefaults.apiKey || current.llm.apiKey),
+            apiKey: preferEnv ? envDefaults.apiKey : (legacyKey || envDefaults.apiKey || current.llm.apiKey),
             baseUrl: normalizeLlmBaseUrl(
               preferEnv ? envDefaults.baseUrl : (stored?.baseUrl ?? envDefaults.baseUrl ?? current.llm.baseUrl),
             ),
@@ -126,6 +128,12 @@ export const useSettings = create<SettingsState>()(
               : (stored?.reasoningEffort ?? envDefaults.reasoningEffort ?? current.llm.reasoningEffort),
           },
         };
+      },
+      onRehydrateStorage: () => (state) => {
+        if (!state?.llm?.apiKey || import.meta.env.DEV) return;
+        queueMicrotask(() => {
+          useSettings.setState({ llm: { ...useSettings.getState().llm } });
+        });
       },
     },
   ),

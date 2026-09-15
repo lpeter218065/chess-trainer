@@ -291,6 +291,7 @@ export function LessonView({
     !!viewed.fen &&
     sideToMove(viewed.fen) === sessionLesson.playerColor &&
     phase !== 'engineThinking' &&
+    phase !== 'finished' &&
     !followUpStreaming;
 
   useEffect(() => {

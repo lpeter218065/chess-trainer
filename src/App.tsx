@@ -6,6 +6,7 @@ import { LoadingScreen } from './components/LoadingScreen';
 import { DebugOverlay } from './debug/DebugOverlay';
 import { htmlLang, t, useLocale } from './i18n';
 import { isNative } from './platform';
+import { parseAppRoute } from './platform/appRoute';
 
 const LessonPage = lazy(() => import('./pages/LessonPage').then((m) => ({ default: m.LessonPage })));
 const ExplorePage = lazy(() => import('./pages/ExplorePage').then((m) => ({ default: m.ExplorePage })));
@@ -27,47 +28,39 @@ function LocaleSync() {
   return null;
 }
 
-function parseAppRoute(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hash) {
-      return parsed.hash.replace(/^#/, '');
-    }
-    if (parsed.pathname && parsed.pathname !== '/') {
-      return parsed.pathname;
-    }
-    if (parsed.host && parsed.host !== 'app' && parsed.host !== 'localhost') {
-      return `/${parsed.host}`;
-    }
-  } catch {
-    /* ignore malformed url */
-  }
-  return null;
-}
-
 function NativeDeepLinkHandler() {
   const navigate = useNavigate();
   useEffect(() => {
     if (!isNative()) return;
+    let removed = false;
     let handle: { remove: () => Promise<void> | void } | undefined;
-    void import('@capacitor/app').then(async ({ App }) => {
-      try {
-        const launch = await App.getLaunchUrl();
-        if (launch?.url) {
-          const route = parseAppRoute(launch.url);
-          if (route) navigate(route);
+    void import('@capacitor/app').then(({ App }) => {
+      if (removed) return;
+      void (async () => {
+        try {
+          const launch = await App.getLaunchUrl();
+          if (removed) return;
+          if (launch?.url) {
+            const route = parseAppRoute(launch.url);
+            if (route) navigate(route);
+          }
+        } catch {
+          /* getLaunchUrl unavailable */
         }
-      } catch {
-        /* getLaunchUrl unavailable */
-      }
-      return App.addListener('appUrlOpen', ({ url }) => {
-        const route = parseAppRoute(url);
-        if (route) navigate(route);
-      });
-    }).then((h) => {
-      handle = h;
+        if (removed) return;
+        const h = await App.addListener('appUrlOpen', ({ url }) => {
+          const route = parseAppRoute(url);
+          if (route) navigate(route);
+        });
+        if (removed) {
+          void h.remove();
+          return;
+        }
+        handle = h;
+      })();
     });
     return () => {
+      removed = true;
       void handle?.remove();
     };
   }, [navigate]);

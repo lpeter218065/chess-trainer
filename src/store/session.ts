@@ -316,7 +316,13 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
         if (s.phase === 'engineThinking') return false;
         if (s.followUpStreaming) return false;
         if (sideToMove(s.fen) !== lesson.playerColor) return false;
-        if (s.phase !== 'userTurn' && s.phase !== 'preparing' && s.phase !== 'finished') return false;
+        if (s.phase !== 'userTurn' && s.phase !== 'preparing') return false;
+        const lessonId = lesson.id;
+        const fenAtMove = s.fen;
+        const stillThisMove = () => {
+          const cur = get();
+          return cur.lesson?.id === lessonId && cur.fen === fenAtMove;
+        };
         const analysisReady = Boolean(s.analysisBefore && s.analysisBefore.fen === s.fen);
         const chess = new Chess(s.fen);
         let move;
@@ -356,6 +362,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
             evalAfter = evalAfterCp;
             engineMove = { san: em.san, uci: em.from + em.to + (em.promotion ?? '') };
           } catch (e) {
+            if (!stillThisMove()) return false;
             set({ engineError: tl('error.engine', { msg: (e as Error).message }), phase: 'userTurn', liveAnnotations: null });
             return false;
           }
@@ -363,6 +370,8 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
           const gr = gameResultOf(chess, lesson);
           evalAfter = gr === 'playerWin' ? 10000 : gr === 'draw' ? 0 : -10000;
         }
+
+        if (!stillThisMove()) return false;
 
         const quality = classifyMove({ evalBefore, evalAfter, userMoveUci: userUci, bestMoveUci: analysisBefore?.bestMove ?? '' });
         const angle = chooseAngle({ quality, evalSwing: evalAfter - evalBefore, history: get().angleHistory, random: deps.random });
@@ -593,8 +602,14 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
             }
           } finally {
             flusher.cancel();
-            if (followUpAbort === ac) followUpAbort = null;
-            if (get().followUpStreaming) set({ followUpStreaming: false });
+            if (followUpAbort === ac) {
+              followUpAbort = null;
+              set((st) =>
+                st.followUpThreadId === threadId
+                  ? { followUpStreaming: false, followUpDraft: '', followUpThreadId: null }
+                  : {},
+              );
+            }
           }
         })();
         await track(run);

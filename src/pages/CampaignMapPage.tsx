@@ -75,7 +75,7 @@ function IslandMap({ islandId }: { islandId: string }) {
                 <p className={`campaign-kicker campaign-map-kind campaign-kind-${level.kind}`}>{i + 1} · {kind}</p>
                 {score > 0 && <Stars n={score} />}
               </div>
-              <h2 className="mt-2 font-medium text-ink">{level.title}</h2>
+              <h2 className="mt-2 font-semibold text-ink">{level.title}</h2>
               <p className="mt-1 text-sm leading-relaxed text-muted">{level.summary}</p>
               {!open && (
                 <span className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-walnut/8 px-2 py-0.5 text-xs font-medium text-muted">
@@ -135,7 +135,7 @@ function IslandMap({ islandId }: { islandId: string }) {
                   </svg>
                   {t('campaign.locked')}
                 </p>
-                <h3 className="mt-1 font-medium text-ink">{next.title}</h3>
+                <h3 className="mt-1 font-semibold text-ink">{next.title}</h3>
                 <p className="mt-1 text-sm text-muted">{next.blurb}</p>
               </div>
             ))}

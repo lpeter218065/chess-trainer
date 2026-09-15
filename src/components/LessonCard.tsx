@@ -15,7 +15,7 @@ export function LessonCard({ lesson, record }: { lesson: Lesson; record?: Progre
       className="card-link p-3.5 pr-10"
     >
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-medium leading-snug text-ink">{lesson.title}</h3>
+        <h3 className="font-semibold leading-snug text-ink">{lesson.title}</h3>
         {record?.completed && (
           <span className={`badge shrink-0 ${record.clean ? 'badge-baize' : 'badge-brass'}`}>
             {record.clean ? t('home.cleanDone') : t('home.done')}

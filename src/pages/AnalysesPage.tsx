@@ -293,7 +293,7 @@ export function AnalysesPage() {
                             >
                               {m.kind === 'explore' ? t('analyses.explore') : t('analyses.lesson')}
                             </span>
-                            <span className="truncate font-medium text-ink">{m.title}</span>
+                            <span className="truncate font-semibold text-ink">{m.title}</span>
                             {active && <span className="shrink-0 text-[11px] font-medium text-walnut">{t('session.current')}</span>}
                           </div>
                           <p className="mt-0.5 text-xs text-muted">

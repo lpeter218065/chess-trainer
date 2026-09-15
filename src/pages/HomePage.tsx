@@ -130,7 +130,7 @@ export function HomePage() {
               state={{ from: 'home' }}
               className="card-link pr-10"
             >
-              <h3 className="font-medium text-ink">{d.title}</h3>
+              <h3 className="font-semibold text-ink">{d.title}</h3>
               <p className="mt-1 text-sm leading-relaxed text-muted">{d.summary}</p>
               <CardChevron />
             </Link>
@@ -141,7 +141,7 @@ export function HomePage() {
             className="card-link border-dashed border-walnut/30 pr-10"
           >
             <p className="campaign-kicker">{t('home.custom')}</p>
-            <h3 className="mt-2 font-medium text-ink">{t('home.customTitle')}</h3>
+            <h3 className="mt-2 font-semibold text-ink">{t('home.customTitle')}</h3>
             <p className="mt-1 text-sm leading-relaxed text-muted">{t('home.customBlurb')}</p>
             <CardChevron />
           </Link>

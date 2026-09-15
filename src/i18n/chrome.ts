@@ -122,7 +122,7 @@ export const chrome = {
   'settings.languageZh': { zh: '中文', en: '中文' },
   'settings.languageEn': { zh: 'English', en: 'English' },
   'settings.baseUrl': { zh: 'Base URL', en: 'Base URL' },
-  'settings.baseUrlHint': { zh: 'OpenAI 兼容接口填到 /v1 为止，勿含 /chat/completions', en: 'OpenAI-compatible URL through /v1. Do not include /chat/completions.' },
+  'settings.baseUrlHint': { zh: 'OpenAI 兼容接口填到 /v1 为止，勿含 /chat/completions。须为 HTTPS（iOS 上架要求）。', en: 'OpenAI-compatible URL through /v1. Do not include /chat/completions. Use HTTPS (required on iOS).' },
   'settings.apiKey': { zh: 'API Key', en: 'API key' },
   'settings.show': { zh: '显示', en: 'Show' },
   'settings.hide': { zh: '隐藏', en: 'Hide' },
@@ -411,6 +411,8 @@ export const chrome = {
   'licenses.wasmSource': { zh: '本仓库使用的 WASM 移植', en: 'WASM port used in this repo' },
 
   'error.noApiKey': { zh: '尚未配置 API Key，请先在设置中填写', en: 'Add an API key in Settings first' },
+  'error.invalidBaseUrl': { zh: 'Base URL 无效，请检查格式', en: 'Invalid base URL. Check the format.' },
+  'error.httpsRequired': { zh: 'iOS 上须使用 HTTPS 的 Base URL', en: 'On iOS the base URL must use HTTPS.' },
   'error.http404Path': {
     zh: '模型服务返回 404：接口路径不存在。Base URL 应填到 /v1（如 https://api.openai.com/v1），勿含 /chat/completions。当前 Base URL：{base}，请求：{url}',
     en: 'The model service returned 404: that path does not exist. Base URL should stop at /v1 (e.g. https://api.openai.com/v1), without /chat/completions. Current Base URL: {base}, request: {url}',

@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "pretypecheck": "npm run engine && npm run licenses",
     "typecheck": "tsc -b --noEmit",
+    "verify": "npm run typecheck && npm test && npm run build",
     "ios:sync": "npm run sync-ios-version && npm run build && npx cap sync ios",
     "ios:open": "npx cap open ios"
   },

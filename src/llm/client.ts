@@ -2,6 +2,7 @@ import { createSseParser, extractDelta } from './sseParser';
 import { llmFetch } from './http';
 import { debugLog } from '../debug/log';
 import { tl } from '../i18n';
+import { isNative } from '../platform';
 
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
@@ -30,6 +31,18 @@ export class LlmError extends Error {
 /** 去掉末尾斜杠与误填的 /chat/completions */
 export function normalizeLlmBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, '').replace(/\/chat\/completions$/i, '');
+}
+
+/** iOS ATS 要求 HTTPS；在原生壳里拒绝明文 Base URL。 */
+export function assertSecureLlmBaseUrl(baseUrl: string, native = isNative()): void {
+  if (!native) return;
+  let url: URL;
+  try {
+    url = new URL(normalizeLlmBaseUrl(baseUrl));
+  } catch {
+    throw new LlmError(tl('error.invalidBaseUrl'));
+  }
+  if (url.protocol !== 'https:') throw new LlmError(tl('error.httpsRequired'));
 }
 
 export function chatCompletionsUrl(baseUrl: string): string {
@@ -79,6 +92,7 @@ export function lowerEffort(effort: ReasoningEffort | undefined): ReasoningEffor
 }
 
 export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts: StreamOptions = {}): AsyncGenerator<string> {
+  assertSecureLlmBaseUrl(cfg.baseUrl);
   const fetchImpl = opts.fetchImpl ?? llmFetch;
   const url = chatCompletionsUrl(cfg.baseUrl);
   const rawEffort = opts.reasoningEffort ?? cfg.reasoningEffort;
@@ -162,6 +176,7 @@ export function modelsUrl(baseUrl: string): string {
 
 /** 设置页「测试连接」：GET /models */
 export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch = llmFetch): Promise<void> {
+  assertSecureLlmBaseUrl(cfg.baseUrl);
   const url = modelsUrl(cfg.baseUrl);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);

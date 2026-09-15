@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { streamChat, LlmError, normalizeLlmBaseUrl, chatCompletionsUrl, lowerEffort, formatLlmHttpError } from '../src/llm/client';
+import { streamChat, LlmError, normalizeLlmBaseUrl, chatCompletionsUrl, lowerEffort, formatLlmHttpError, assertSecureLlmBaseUrl } from '../src/llm/client';
 import { useSettings } from '../src/store/settings';
 
 function sseResponse(chunks: string[], status = 200): Response {
@@ -122,5 +122,14 @@ describe('normalizeLlmBaseUrl', () => {
     expect(normalizeLlmBaseUrl('https://api.example.com/v1/')).toBe('https://api.example.com/v1');
     expect(normalizeLlmBaseUrl('https://api.example.com/v1/chat/completions')).toBe('https://api.example.com/v1');
     expect(chatCompletionsUrl('https://api.example.com/v1/chat/completions')).toBe('https://api.example.com/v1/chat/completions');
+  });
+});
+
+describe('assertSecureLlmBaseUrl', () => {
+  it('原生壳拒绝 http', () => {
+    expect(() => assertSecureLlmBaseUrl('http://api.example.com/v1', true)).toThrow(LlmError);
+  });
+  it('Web 允许 http', () => {
+    expect(() => assertSecureLlmBaseUrl('http://localhost:8787/v1', false)).not.toThrow();
   });
 });

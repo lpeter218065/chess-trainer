@@ -21,6 +21,16 @@ import { extractFeatures } from '../chess/features';
 import { pickBookReply } from '../chess/openingBook';
 import { tl } from '../i18n';
 
+/** 并发 lesson boot（start / hydrate）时只认最后一次 */
+let lessonBootSerial = 0;
+function bumpLessonBootSerial(): number {
+  lessonBootSerial += 1;
+  return lessonBootSerial;
+}
+function lessonBootStillCurrent(serial: number): boolean {
+  return serial === lessonBootSerial;
+}
+
 export interface LlmStreamOptions {
   temperature: number;
   signal: AbortSignal;
@@ -293,6 +303,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
       ...initial,
 
       async start(lesson, difficulty) {
+        const boot = bumpLessonBootSerial();
         streamAbort?.abort();
         followUpAbort?.abort();
         llmThread = null;
@@ -307,6 +318,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
         });
         // 执黑从起始局面等：若当前不是用户行棋，先让引擎走出对手着法
         await track(playUntilPlayerToMove());
+        if (!lessonBootStillCurrent(boot)) return;
       },
 
       async playUserMove(from, to, promotion) {
@@ -717,6 +729,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
       },
 
       async hydrateSnapshot(snap, lesson) {
+        const boot = bumpLessonBootSerial();
         streamAbort?.abort();
         followUpAbort?.abort();
         const difficulty = difficultyById(snap.difficultyId);
@@ -748,6 +761,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
         if (get().phase !== 'finished') {
           await track(prepareTurn());
         }
+        if (!lessonBootStillCurrent(boot)) return;
       },
     };
   });

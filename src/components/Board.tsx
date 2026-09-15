@@ -6,10 +6,11 @@ import type { BoardAnnotations } from '../chess/annotations';
 import { ARROW_COLORS } from '../chess/annotations';
 import type { CommentaryFocus } from '../chess/commentaryMarkers';
 import { EMPTY_TAP, tapMoveReducer, type TapState } from '../chess/tapMove';
-import { isIncrementalFen } from '../chess/notation';
+import { isIncrementalFen, sideToMove } from '../chess/notation';
 import { squaresForTheme } from '../chess/boardTheme';
 import { piecesForSet } from '../chess/pieceSet';
 import { useSettings } from '../store/settings';
+import { useT } from '../i18n';
 
 export interface BoardProps {
   fen: string;
@@ -54,6 +55,7 @@ function BoardImpl({
   onMove,
   onBackgroundTap,
 }: BoardProps) {
+  const t = useT();
   const { pieceSet, pieceColor, boardTheme } = useSettings(
     useShallow((s) => ({ pieceSet: s.pieceSet, pieceColor: s.pieceColor, boardTheme: s.boardTheme })),
   );
@@ -65,6 +67,11 @@ function BoardImpl({
   const prevFenRef = useRef<string>('');
   const [side, setSide] = useState(0);
   const { legalMoves, ownPieceSquares } = useMemo(() => tapInputs(fen), [fen]);
+  const boardAria = useMemo(() => {
+    const side = sideToMove(fen) === 'w' ? t('home.playWhite') : t('home.playBlack');
+    const view = orientation === 'white' ? t('board.whiteView') : t('board.blackView');
+    return t('board.trainerSurface', { side, view });
+  }, [fen, orientation, t]);
 
   // 仅当本次 fen 相对上一次为「单步」变化时才动画（回退/跳步/变着一次动多子会点选错位）。
   // prevFenRef 在 commit 后更新，故渲染期读到的是上一帧已提交的 fen。
@@ -189,6 +196,8 @@ function BoardImpl({
       ref={hostRef}
       className="chess-board-surface flex h-full min-h-0 w-full items-center justify-center"
       data-selected={tap.selected ?? ''}
+      role="group"
+      aria-label={boardAria}
     >
       {side > 0 && (
         <div

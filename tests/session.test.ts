@@ -105,6 +105,21 @@ describe('session store', () => {
     expect(finished!.id).toBe(short.id);
   });
 
+  it('连续 start 只保留最后一次课', async () => {
+    const store = createSessionStore({
+      llmDebounceMs: 0,
+      engine: fakeEngineSlowOpponent(80),
+      llm: fakeLlm(),
+    });
+    const p1 = store.getState().start(lesson, diff);
+    const p2 = store.getState().start(lessonOther, diff);
+    await Promise.all([p1, p2]);
+    await store.getState().whenIdle();
+    expect(store.getState().lesson?.id).toBe(lessonOther.id);
+    expect(store.getState().fen).toBe(lessonOther.startFen);
+    expect(store.getState().rounds.length).toBe(0);
+  });
+
   it('playUserMove 在 start 重启后不污染新课状态', async () => {
     const store = createSessionStore({
       llmDebounceMs: 0,

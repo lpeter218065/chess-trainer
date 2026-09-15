@@ -363,6 +363,7 @@ export const chrome = {
   'angle.history': { zh: '典型例子', en: 'Typical example' },
 
   'board.readonlyMini': { zh: '只读小棋盘，{view}', en: 'Read-only mini board, {view}' },
+  'board.trainerSurface': { zh: '国际象棋棋盘，{view}，轮到{side}', en: 'Chess board, {view}, {side} to move' },
   'trainer.analyze': { zh: '分析', en: 'Analysis' },
   'eval.you': { zh: '你', en: 'You' },
   'eval.opp': { zh: '对手', en: 'Opp' },

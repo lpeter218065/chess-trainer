@@ -10,7 +10,7 @@ npm run verify
 
 包含 `typecheck`、全量 `vitest`、`production build`（含 Stockfish 与第三方许可证生成）。
 
-CI 在 `main` 的 push / PR 上运行相同命令（`.github/workflows/ci.yml`）。
+CI 在 `main` 的 push / PR 上运行相同命令（`.github/workflows/ci.yml`）。若 HTTPS push 因缺少 `workflow` OAuth 范围被拒，可用 SSH：`git push git@github.com:lpeter218065/chess.git main`。
 
 ## iOS（Capacitor）
 
@@ -35,3 +35,9 @@ CI 在 `main` 的 push / PR 上运行相同命令（`.github/workflows/ci.yml`�
 - App Store 截图、描述、分级。
 - TestFlight 真机走一遍：课程、探索、闯关、语音问教练、离线无 Key 时的空状态。
 - 若使用非 OpenAI 兼容端点，在真机用「测试连接」验证 ATS 与 CORS（Web）。
+
+## 已知后续（不挡首版上架）
+
+- 探索模式快速连走时的着法质量 token（需 per-node 而非全局 analyzeToken）。
+- 模态 sheet 键盘焦点陷阱（Settings / Sheet 组件）。
+- 升变非后兵时的选子 UI（当前默认后）。

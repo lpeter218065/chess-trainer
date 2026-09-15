@@ -75,19 +75,40 @@ function Segmented({
             aria-controls={`${id}-panel-${t.id}`}
             aria-selected={selected}
             aria-disabled={t.disabled || undefined}
+            disabled={Boolean(t.disabled)}
             tabIndex={selected ? 0 : -1}
             className={`trainer-tab${selected && !t.disabled ? ' is-active' : ''}${t.disabled ? ' is-disabled' : ''}`}
-            onClick={() => onSelect(t.id)}
+            onClick={() => {
+              if (t.disabled) return;
+              onSelect(t.id);
+            }}
             onKeyDown={(e) => {
               const index = tabs.findIndex((tab) => tab.id === t.id);
-              const next = e.key === 'ArrowRight' ? (index + 1) % tabs.length
-                : e.key === 'ArrowLeft' ? (index - 1 + tabs.length) % tabs.length
-                  : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : -1;
+              const nextIndex = (from: number, dir: 1 | -1) => {
+                for (let step = 1; step <= tabs.length; step += 1) {
+                  const idx = (from + dir * step + tabs.length) % tabs.length;
+                  if (!tabs[idx]?.disabled) return idx;
+                }
+                return from;
+              };
+              const firstEnabled = tabs.findIndex((tab) => !tab.disabled);
+              let lastEnabled = firstEnabled;
+              for (let i = tabs.length - 1; i >= 0; i -= 1) {
+                if (!tabs[i]?.disabled) {
+                  lastEnabled = i;
+                  break;
+                }
+              }
+              const next = e.key === 'ArrowRight' ? nextIndex(index, 1)
+                : e.key === 'ArrowLeft' ? nextIndex(index, -1)
+                  : e.key === 'Home' ? firstEnabled
+                    : e.key === 'End' ? lastEnabled
+                      : -1;
               if (next < 0) return;
               e.preventDefault();
               e.stopPropagation();
-              onSelect(tabs[next].id);
-              document.getElementById(`${id}-tab-${tabs[next].id}`)?.focus();
+              onSelect(tabs[next]!.id);
+              document.getElementById(`${id}-tab-${tabs[next]!.id}`)?.focus();
             }}
           >
             {t.label}

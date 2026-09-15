@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { appDebugLog } from './log';
+import { useT } from '../i18n';
 
 /**
  * 调试日志面板。由 `DebugOverlay` 懒加载（`React.lazy`），首次呼出前不进主 bundle。
  * 自己读日志缓冲、自己管「已复制」状态，对外只需要一个 `onClose`。
  */
 export default function DebugOverlayPanel({ onClose }: { onClose(): void }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const entries = appDebugLog.list();
   return (
@@ -21,10 +23,10 @@ export default function DebugOverlayPanel({ onClose }: { onClose(): void }) {
     >
       <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2">
         <h2 id="debug-title" className="min-w-0 flex-1 text-sm font-semibold">
-          调试日志
+          {t('debug.title')}
         </h2>
         <button type="button" className="btn btn-sm" onClick={() => { appDebugLog.clear(); }}>
-          清空
+          {t('debug.clear')}
         </button>
         <button
           type="button"
@@ -39,18 +41,18 @@ export default function DebugOverlayPanel({ onClose }: { onClose(): void }) {
             );
           }}
         >
-          {copied ? '已复制' : '复制'}
+          {copied ? t('debug.copied') : t('debug.copy')}
         </button>
         <button type="button" className="btn btn-sm btn-primary" onClick={onClose}>
-          关闭
+          {t('debug.close')}
         </button>
       </div>
       <p className="mb-2 shrink-0 text-[11px] text-felt-fg/70">
-        设置里可开启摇一摇 / 三指点按开关。密钥已脱敏。
+        {t('debug.hint')}
       </p>
       <pre className="min-h-0 min-w-0 flex-1 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-ink p-3 font-mono text-[11px] leading-relaxed">
         {entries.length === 0
-          ? '暂无日志。去设置里点「测试连接」，或生成讲解后再打开本页。'
+          ? t('debug.empty')
           : entries
               .map((e) => {
                 const ts = new Date(e.t).toISOString().slice(11, 23);

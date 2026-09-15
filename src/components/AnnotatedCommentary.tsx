@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { focusFromLine, stripMarkers, type CommentaryFocus } from '../chess/commentaryMarkers';
 import { toggleFocus } from '../chess/commentaryFocus';
+import { useT } from '../i18n';
 
 type LineKind = 'summary' | 'bullet' | 'next';
 export type CommentaryFocusMode = 'hover' | 'tap';
@@ -81,6 +82,8 @@ function StructuredAnnotated({
   const summary = lines.filter((l) => l.kind === 'summary').map((l) => l.text);
   const bullets = lines.filter((l) => l.kind === 'bullet');
   const next = lines.filter((l) => l.kind === 'next');
+  const t = useT();
+  const hintText = focusMode === 'hover' ? t('chat.emptyHover') : t('notes.tapHint');
   const lineProps = { onFocus, focusMode, activeFocus };
 
   return (
@@ -107,7 +110,7 @@ function StructuredAnnotated({
         </p>
       )}
       {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-walnut align-middle" />}
-      {showHoverHint && <p className="mt-2 text-xs text-muted">点带标记的句子，棋盘会标出对应格子；再点一次取消</p>}
+      {showHoverHint && <p className="mt-2 text-xs text-muted">{hintText}</p>}
     </div>
   );
 }

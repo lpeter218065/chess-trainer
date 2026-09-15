@@ -3,7 +3,7 @@ import { isNative } from '../platform/native';
 import { appDebugLog, debugLog } from './log';
 
 /** 启动时探测的原生插件；缺失或方法名不匹配会导致 `"<Plugin>.<method>()" is not implemented`。 */
-const PROBED_PLUGINS = ['NativeSse', 'SecureStorage', 'Preferences', 'Filesystem', 'App', 'Keyboard', 'StatusBar'];
+const PROBED_PLUGINS = ['NativeSse', 'SpeechRecognition', 'SecureStorage', 'Preferences', 'Filesystem', 'App', 'Keyboard', 'StatusBar'];
 
 /** 镜像到原生控制台（Capacitor 会把 WebView 的 console.* 转发到 Xcode / simctl log stream）。 */
 export type DebugHookDeps = {

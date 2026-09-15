@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useT } from '../i18n';
 
 export function ToolToggle({
   pressed,
@@ -81,6 +82,7 @@ export function BoardMoreMenu({ items }: { items: BoardMoreItem[] }) {
     };
   }, [open]);
 
+  const t = useT();
   if (visible.length === 0) return null;
 
   return (
@@ -88,13 +90,13 @@ export function BoardMoreMenu({ items }: { items: BoardMoreItem[] }) {
       <button
         type="button"
         className={`btn btn-sm ${open ? 'btn-on' : ''}`}
-        aria-label="更多"
+        aria-label={t('trainer.more')}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
         <IconMore />
-        更多
+        {t('trainer.more')}
       </button>
       {open && (
         <div className="menu absolute right-0 bottom-full z-20 mb-1.5 min-w-44 py-1" role="menu">
@@ -115,7 +117,7 @@ export function BoardMoreMenu({ items }: { items: BoardMoreItem[] }) {
                 setOpen(false);
               }}
             >
-              <span>{item.label}{item.pressed ? ' · 开' : ''}</span>
+              <span>{item.label}{item.pressed ? t('trainer.on') : ''}</span>
               {item.disabled && item.reason && (
                 <span className="text-[11px] font-normal text-muted">{item.reason}</span>
               )}

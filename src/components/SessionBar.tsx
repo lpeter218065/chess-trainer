@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useGameSessions, formatSessionTime, resolveCurrentSessionId, type SessionKind, type SessionMeta } from '../store/gameSessions';
 import { Sheet } from './Sheet';
+import { useT } from '../i18n';
 
 function listForKind(metas: Record<string, SessionMeta>, kind: SessionKind): SessionMeta[] {
   return Object.values(metas)
@@ -55,6 +56,7 @@ export function SessionList({
   onSaveAs: (title: string) => void;
   extra?: ReactNode;
 }) {
+  const t = useT();
   const metasMap = useGameSessions((s) => s.metas);
   const activeId = useGameSessions((s) => (kind === 'explore' ? s.activeExploreId : s.activeLessonId));
   const currentId = useGameSessions(resolveCurrentSessionId);
@@ -67,12 +69,12 @@ export function SessionList({
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
 
-  const newLabel = kind === 'explore' ? '起始局面' : '重开本局';
+  const newLabel = kind === 'explore' ? t('session.startPosition') : t('session.restart');
 
   return (
     <div>
       {metas.length === 0 && (
-        <p className="px-1 py-3 text-sm text-muted">还没有会话。可在下面新建。</p>
+        <p className="px-1 py-3 text-sm text-muted">{t('session.empty')}</p>
       )}
       <ul className="flex flex-col gap-0.5">
         {metas.map((m) => (
@@ -84,18 +86,18 @@ export function SessionList({
             >
               <span className="flex items-center gap-2">
                 <span className="min-w-0 truncate font-medium text-ink">{m.title}</span>
-                {m.id === currentId && <span className="shrink-0 text-[11px] text-walnut">当前</span>}
+                {m.id === currentId && <span className="shrink-0 text-[11px] text-walnut">{t('session.current')}</span>}
               </span>
               <span className="text-xs text-muted">{formatSessionTime(m.updatedAt)}</span>
             </button>
             <button
               type="button"
               className="btn btn-ghost min-h-11 min-w-11 px-0 text-muted"
-              aria-label={`重命名 ${m.title}`}
-              title="重命名"
+              aria-label={t('session.renameAria', { title: m.title })}
+              title={t('session.rename')}
               onClick={() => {
-                const t = window.prompt('重命名会话', m.title);
-                if (t) rename(m.id, t);
+                const next = window.prompt(t('session.renamePrompt'), m.title);
+                if (next) rename(m.id, next);
               }}
             >
               <IconPencil />
@@ -103,10 +105,10 @@ export function SessionList({
             <button
               type="button"
               className="btn btn-ghost min-h-11 min-w-11 px-0 text-muted hover:text-danger"
-              aria-label={`删除 ${m.title}`}
-              title="删除"
+              aria-label={t('session.deleteAria', { title: m.title })}
+              title={t('session.delete')}
               onClick={() => {
-                if (!window.confirm(`删除会话「${m.title}」？`)) return;
+                if (!window.confirm(t('session.deleteConfirm', { title: m.title }))) return;
                 deleteSession(m.id);
                 if (m.id === activeId) {
                   const next = listForKind(useGameSessions.getState().metas, kind)[0];
@@ -134,11 +136,11 @@ export function SessionList({
           className="flex min-h-11 w-full items-center px-2 text-left text-sm text-ink"
           role="menuitem"
           onClick={() => {
-            setTitleDraft(`${active?.title ?? '会话'} 副本`);
+            setTitleDraft(t('session.copy', { title: active?.title ?? t('session.sheet') }));
             setSaveAsOpen(true);
           }}
         >
-          另存为…
+          {t('session.saveAs')}
         </button>
         {extra}
       </div>
@@ -156,8 +158,8 @@ export function SessionList({
             aria-modal="true"
             aria-labelledby="save-as-title"
           >
-            <h3 id="save-as-title" className="page-title mb-3 text-xl">另存为</h3>
-            <label htmlFor="save-as-title-input" className="mb-1.5 block text-sm font-medium text-ink">名称</label>
+            <h3 id="save-as-title" className="page-title mb-3 text-xl">{t('session.saveAsTitle')}</h3>
+            <label htmlFor="save-as-title-input" className="mb-1.5 block text-sm font-medium text-ink">{t('session.name')}</label>
             <input
               id="save-as-title-input"
               className="field mb-4"
@@ -174,7 +176,7 @@ export function SessionList({
               }}
             />
             <div className="flex justify-end gap-2">
-              <button type="button" className="btn" onClick={() => setSaveAsOpen(false)}>取消</button>
+              <button type="button" className="btn" onClick={() => setSaveAsOpen(false)}>{t('session.cancel')}</button>
               <button
                 type="button"
                 className="btn btn-primary"
@@ -183,7 +185,7 @@ export function SessionList({
                   setSaveAsOpen(false);
                 }}
               >
-                保存
+                {t('session.save')}
               </button>
             </div>
           </div>
@@ -216,6 +218,7 @@ export function SessionBar({
   const activeId = useGameSessions((s) => (kind === 'explore' ? s.activeExploreId : s.activeLessonId));
   const metas = useMemo(() => listForKind(metasMap, kind), [metasMap, kind]);
   const active = useMemo(() => metas.find((m) => m.id === activeId) ?? null, [metas, activeId]);
+  const t = useT();
 
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = openProp ?? uncontrolledOpen;
@@ -230,7 +233,7 @@ export function SessionBar({
   };
 
   const sheet = (
-    <Sheet open={open} onClose={() => setOpen(false)} title="会话" titleId="session-sheet-title">
+    <Sheet open={open} onClose={() => setOpen(false)} title={t('session.sheet')} titleId="session-sheet-title">
       <SessionList
         kind={kind}
         onSwitch={(id) => closeAnd(() => onSwitch(id))}
@@ -254,7 +257,7 @@ export function SessionBar({
         <button
           type="button"
           className="btn btn-sm btn-ghost min-h-11 min-w-11 px-0"
-          aria-label="会话"
+          aria-label={t('session.sheet')}
           aria-haspopup="dialog"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
@@ -271,12 +274,12 @@ export function SessionBar({
       <button
         type="button"
         className="session-trigger btn max-w-[9.5rem] gap-1 truncate text-left text-sm"
-        title={active?.title ?? '会话'}
+        title={active?.title ?? t('session.sheet')}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        <span className="min-w-0 truncate">{active?.title ?? '会话'}</span>
+        <span className="min-w-0 truncate">{active?.title ?? t('session.sheet')}</span>
         <IconChevron />
       </button>
       {sheet}

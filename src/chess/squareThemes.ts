@@ -104,16 +104,24 @@ export function extractSquareThemes(fen: string): SquareThemes {
   };
 }
 
-function listSquares(squares: string[]): string {
-  return squares.length ? squares.join('、') : '无';
+function listSquares(squares: string[], locale: 'zh' | 'en' = 'zh'): string {
+  if (!squares.length) return locale === 'en' ? 'none' : '无';
+  return squares.join(locale === 'en' ? ', ' : '、');
 }
 
-export function squareThemesPromptBlock(fen: string, sideToMove: Color): string {
+export function squareThemesPromptBlock(fen: string, sideToMove: Color, locale: 'zh' | 'en' = 'zh'): string {
   const themes = extractSquareThemes(fen);
   const ownStrong = sideToMove === 'w' ? themes.strongWhite : themes.strongBlack;
   const oppStrong = sideToMove === 'w' ? themes.strongBlack : themes.strongWhite;
   const ownWeak = sideToMove === 'w' ? themes.weakWhite : themes.weakBlack;
   const oppWeak = sideToMove === 'w' ? themes.weakBlack : themes.weakWhite;
+  if (locale === 'en') {
+    return `Board squares (strong/weak squares may only be named from this list; if none, write “none obvious”; do not invent squares):
+- Side to move, strong squares (outposts): ${listSquares(ownStrong, locale)}
+- Opponent strong squares: ${listSquares(oppStrong, locale)}
+- Side to move, weak squares (holes): ${listSquares(ownWeak, locale)}
+- Opponent weak squares: ${listSquares(oppWeak, locale)}`;
+  }
   return `局面格子（强格/弱格只能点名这里列出的格子，没有则写「暂无明显」，不要自编格子）：
 - 行棋方强格（前哨）：${listSquares(ownStrong)}
 - 对方强格：${listSquares(oppStrong)}

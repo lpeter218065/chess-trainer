@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import { envLlm, partializeSettings, useSettings } from '../src/store/settings';
+
+afterEach(() => {
+  useSettings.getState().setPieceSet('classic');
+  useSettings.getState().setBoardTheme('walnut');
+  useSettings.getState().setPieceColor('standard');
+});
 
 describe('envLlm', () => {
   it('生产模式下 apiKey 恒为空', () => {
@@ -28,15 +34,47 @@ describe('partializeSettings', () => {
       temperature: 0.8,
       difficultyId: 'medium',
       debugGesturesEnabled: false,
+      localePref: 'system',
+      pieceSet: 'classic',
+      boardTheme: 'walnut',
+      pieceColor: 'standard',
       setLlm() {},
       setTemperature() {},
       setDifficultyId() {},
       setDebugGesturesEnabled() {},
+      setLocalePref() {},
+      setPieceSet() {},
+      setBoardTheme() {},
+      setPieceColor() {},
     });
     expect(sliced).not.toHaveProperty('llm.apiKey');
     expect(JSON.stringify(sliced)).not.toContain('sk-secret');
     expect(sliced.llm.baseUrl).toBe('https://api.openai.com/v1');
     expect(sliced.llm.model).toBe('gpt-x');
+  });
+});
+
+describe('pieceSet', () => {
+  it('pieceSet 默认 classic 且被持久化', () => {
+    expect(useSettings.getState().pieceSet).toBe('classic');
+    useSettings.getState().setPieceSet('letter');
+    expect(partializeSettings(useSettings.getState()).pieceSet).toBe('letter');
+    useSettings.getState().setPieceSet('not-a-set' as 'classic');
+    expect(useSettings.getState().pieceSet).toBe('classic');
+  });
+});
+
+describe('board look', () => {
+  it('boardTheme 与 pieceColor 默认值会被持久化', () => {
+    expect(useSettings.getState().boardTheme).toBe('walnut');
+    expect(useSettings.getState().pieceColor).toBe('standard');
+    useSettings.getState().setBoardTheme('baize');
+    useSettings.getState().setPieceColor('brass');
+    const sliced = partializeSettings(useSettings.getState());
+    expect(sliced.boardTheme).toBe('baize');
+    expect(sliced.pieceColor).toBe('brass');
+    useSettings.getState().setBoardTheme('nope' as 'walnut');
+    expect(useSettings.getState().boardTheme).toBe('walnut');
   });
 });
 

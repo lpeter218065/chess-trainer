@@ -18,6 +18,7 @@ def capacitor_pods
   pod 'CapacitorPreferences', :path => '../../node_modules/@capacitor/preferences'
   pod 'CapacitorStatusBar', :path => '../../node_modules/@capacitor/status-bar'
   pod 'ChessTrainerNativeSse', :path => '../../plugins/native-sse'
+  pod 'ChessTrainerSpeechRecognition', :path => '../../plugins/speech-recognition'
 end
 
 target 'App' do

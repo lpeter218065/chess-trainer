@@ -74,6 +74,6 @@ export function HydrationGate({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  if (!ready) return <LoadingScreen message="正在加载…" />;
+  if (!ready) return <LoadingScreen />;
   return children;
 }

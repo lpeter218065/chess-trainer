@@ -1,4 +1,5 @@
 import { parseBestMove, parseInfoLine, type InfoLine } from './uciParser';
+import { tl } from '../i18n';
 
 export interface Analysis {
   fen: string;
@@ -17,7 +18,7 @@ export class StockfishEngine {
   constructor(workerUrl: string) {
     this.worker = new Worker(workerUrl);
     this.worker.onmessage = (e: MessageEvent<string>) => this.onLine(String(e.data));
-    this.worker.onerror = (e) => this.current?.reject(new Error(`引擎 worker 错误：${e.message}`));
+    this.worker.onerror = (e) => this.current?.reject(new Error(tl('error.engineWorker', { msg: e.message })));
   }
 
   private onLine(line: string) {
@@ -68,7 +69,7 @@ export class StockfishEngine {
       if (info && (!byPv.has(info.multipv) || byPv.get(info.multipv)!.depth <= info.depth)) byPv.set(info.multipv, info);
     }
     const bestMove = lines.map(parseBestMove).find((m): m is string => m !== null);
-    if (!bestMove) throw new Error('引擎没有返回 bestmove（可能已终局）');
+    if (!bestMove) throw new Error(tl('error.engineNoBestmoveOver'));
     return { fen, lines: [...byPv.values()].sort((a, b) => a.multipv - b.multipv), bestMove };
   }
 
@@ -76,7 +77,7 @@ export class StockfishEngine {
     const go = moveTimeMs ? `go depth ${depth} movetime ${moveTimeMs}` : `go depth ${depth}`;
     const lines = await this.run([`position fen ${fen}`, go], true);
     const bm = lines.map(parseBestMove).find((m): m is string => m !== null);
-    if (!bm) throw new Error('引擎没有返回 bestmove');
+    if (!bm) throw new Error(tl('error.engineNoBestmove'));
     return bm;
   }
 

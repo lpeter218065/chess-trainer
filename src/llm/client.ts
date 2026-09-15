@@ -1,6 +1,7 @@
 import { createSseParser, extractDelta } from './sseParser';
 import { llmFetch } from './http';
 import { debugLog } from '../debug/log';
+import { tl } from '../i18n';
 
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
@@ -44,15 +45,15 @@ export function formatLlmHttpError(status: number, body: string, cfg: LlmConfig)
     if (typeof em === 'string') msg = em.trim();
   } catch { /* 非 JSON，忽略 */ }
   if (status === 404 && /route .* not found/i.test(body)) {
-    return `模型服务返回 404：接口路径不存在。Base URL 应填到 /v1（如 https://api.openai.com/v1），勿含 /chat/completions。当前 Base URL：${cfg.baseUrl}，请求：${url}`;
+    return tl('error.http404Path', { base: cfg.baseUrl, url });
   }
   if (status === 404) {
-    return `模型服务返回 404。接口 ${url} 可达，更可能是模型「${cfg.model}」不存在或当前 Key 无权使用，请在设置中核对模型名。`;
+    return tl('error.http404Model', { url, model: cfg.model });
   }
   if (!msg || /internal server error/i.test(msg)) {
-    return `模型服务返回 ${status}：服务端错误，请稍后重试或在设置中更换服务`;
+    return tl('error.httpServer', { status });
   }
-  return `模型服务返回 ${status}：${msg.slice(0, 120)}`;
+  return tl('error.httpStatus', { status, msg: msg.slice(0, 120) });
 }
 
 export interface StreamOptions {
@@ -106,7 +107,7 @@ export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts:
   } catch (e) {
     if ((e as Error).name === 'AbortError') return;
     debugLog('error', 'llm', `fetch fail ${(e as Error).message}`);
-    throw new LlmError(`网络请求失败：${(e as Error).message}。若为第三方服务，可能是不允许浏览器跨域访问（CORS）。`);
+    throw new LlmError(tl('error.network', { msg: (e as Error).message }));
   }
   debugLog('info', 'llm', `http ${res.status} ${res.headers.get('content-type') ?? ''}`);
   if (!res.ok) {
@@ -114,7 +115,7 @@ export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts:
     debugLog('error', 'llm', `http body ${text.slice(0, 240)}`);
     throw new LlmError(formatLlmHttpError(res.status, text, cfg), res.status);
   }
-  if (!res.body) throw new LlmError('响应没有正文');
+  if (!res.body) throw new LlmError(tl('error.noBody'));
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   const parser = createSseParser();
@@ -151,7 +152,9 @@ export async function* streamChat(cfg: LlmConfig, messages: ChatMessage[], opts:
   }
 }
 
-const CORS_HINT = '该服务不允许从 App 内直连，请换支持跨域的服务或官方接口';
+function corsHint(): string {
+  return tl('error.cors');
+}
 
 export function modelsUrl(baseUrl: string): string {
   return `${normalizeLlmBaseUrl(baseUrl)}/models`;
@@ -173,9 +176,9 @@ export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch
       });
     } catch (e) {
       if ((e as Error).name === 'AbortError')
-        throw new LlmError('测试连接超时：服务在 15 秒内没有完成响应，请检查服务地址与网络');
+        throw new LlmError(tl('error.probeTimeout'));
       debugLog('error', 'llm', `probe fail ${(e as Error).message}`);
-      throw new LlmError(CORS_HINT);
+      throw new LlmError(corsHint());
     }
     if (res.status === 404 || res.status === 405) {
       await res.body?.cancel().catch(() => {});
@@ -189,7 +192,7 @@ export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch
     }
   } catch (e) {
     if ((e as Error).name === 'AbortError')
-      throw new LlmError('测试连接超时：服务在 15 秒内没有完成响应，请检查服务地址与网络');
+      throw new LlmError(tl('error.probeTimeout'));
     throw e;
   } finally {
     clearTimeout(timer);
@@ -198,7 +201,7 @@ export async function probeLlmConnection(cfg: LlmConfig, fetchImpl: typeof fetch
 
 /** 设置页“测试连接”：拿到第一个 token 即成功 */
 export async function testConnection(cfg: LlmConfig, fetchImpl?: typeof fetch, signal?: AbortSignal): Promise<void> {
-  const gen = streamChat(cfg, [{ role: 'user', content: '回复“好”' }], {
+  const gen = streamChat(cfg, [{ role: 'user', content: tl('llm.probePing') }], {
     temperature: 0,
     fetchImpl,
     signal,
@@ -207,5 +210,5 @@ export async function testConnection(cfg: LlmConfig, fetchImpl?: typeof fetch, s
   });
   const first = await gen.next();
   await gen.return(undefined);
-  if (first.done) throw new LlmError('连接成功但没有收到任何内容');
+  if (first.done) throw new LlmError(tl('error.probeEmpty'));
 }

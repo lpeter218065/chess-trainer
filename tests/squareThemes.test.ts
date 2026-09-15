@@ -42,4 +42,11 @@ describe('squareThemesPromptBlock', () => {
     expect(block).toContain('无');
     expect(block).not.toMatch(/[a-h][1-8]/);
   });
+
+  it('writes the square list in English when asked', () => {
+    const block = squareThemesPromptBlock(OUTPOST, 'w', 'en');
+    expect(block).toContain('Side to move, strong squares');
+    expect(block).toContain('d5');
+    expect(block).not.toContain('行棋方强格');
+  });
 });

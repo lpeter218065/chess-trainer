@@ -1,3 +1,6 @@
+import { liveLocale } from '../../i18n/live';
+import { t } from '../../i18n/t';
+
 export type NavOrigin = 'home' | 'analyses';
 
 export function originFromState(state: unknown): NavOrigin {
@@ -9,7 +12,8 @@ export function originFromState(state: unknown): NavOrigin {
 }
 
 export function originLabel(origin: NavOrigin): string {
-  return origin === 'analyses' ? '我的分析' : '首页';
+  const locale = liveLocale();
+  return origin === 'analyses' ? t(locale, 'home.analyses') : t(locale, 'nav.home');
 }
 
 export function originPath(origin: NavOrigin): string {

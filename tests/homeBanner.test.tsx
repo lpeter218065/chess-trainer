@@ -29,9 +29,8 @@ describe('HomePage API key banner', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText(/讲解需要 API Key/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '去配置' }));
-    expect(screen.getByRole('dialog', { name: '设置' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^关闭$/ }));
+    expect(screen.getByRole('link', { name: '去配置' }).getAttribute('href')).toBe('/settings');
+    expect(screen.getByRole('link', { name: '设置' }).getAttribute('href')).toBe('/settings');
     fireEvent.click(screen.getByRole('button', { name: '关闭提示' }));
     expect(screen.queryByText(/讲解需要 API Key/)).toBeNull();
   });

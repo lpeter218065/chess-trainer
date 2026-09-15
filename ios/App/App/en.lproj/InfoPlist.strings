@@ -1,0 +1,5 @@
+CFBundleDisplayName = "Chess Trainer";
+CFBundleName = "Chess Trainer";
+NSMicrophoneUsageDescription = "The microphone is used when you speak to the coach.";
+NSSpeechRecognitionUsageDescription = "Your speech is turned into text so you can ask the coach.";
+NSMotionUsageDescription = "Shake to open debug logs for commentary requests and errors.";

@@ -17,12 +17,19 @@ import { LoadingScreen } from '../components/LoadingScreen';
 import { NavBack } from '../components/layout/NavBack';
 import { originFromState, originLabel, originPath } from '../components/layout/navOrigin';
 import { SettingsDialog } from '../components/SettingsDialog';
+import { localizeContent, useLocale, useT } from '../i18n';
 
 type Phase = 'setup' | 'play';
 
-function sessionLabel(title: string, color: Color, startMode: DrillStartMode, oppLabel: string): string {
-  const side = color === 'w' ? '执白' : '执黑';
-  const start = startMode === 'from-start' ? '起始局面' : '定式局面';
+function sessionLabel(
+  title: string,
+  color: Color,
+  startMode: DrillStartMode,
+  oppLabel: string,
+  t: ReturnType<typeof useT>,
+): string {
+  const side = color === 'w' ? t('drill.white') : t('drill.black');
+  const start = startMode === 'from-start' ? t('drill.startPos') : t('drill.tabiyaPos');
   return `${title} · ${side} · ${start} · ${oppLabel}`;
 }
 
@@ -34,7 +41,10 @@ export function OpeningDrillPage() {
   const rawId = decodeURIComponent(id ?? '');
   const isCustom = rawId === CUSTOM_DRILL_ID;
   const catalogDrill = openingDrillById(rawId);
-  const drill: OpeningDrill | undefined = isCustom ? CUSTOM_DRILL_STUB : catalogDrill;
+  const locale = useLocale();
+  const t = useT();
+  const source: OpeningDrill | undefined = isCustom ? CUSTOM_DRILL_STUB : catalogDrill;
+  const drill = source ? localizeContent(source, locale) : source;
 
   const [phase, setPhase] = useState<Phase>('setup');
   const [color, setColor] = useState<Color>('w');
@@ -43,7 +53,7 @@ export function OpeningDrillPage() {
   const [requirement, setRequirement] = useState('');
   const [playDrill, setPlayDrill] = useState<OpeningDrill | null>(null);
   const [store, setStore] = useState<StoreApi<SessionState> | null>(null);
-  const [status, setStatus] = useState('正在加载引擎…');
+  const [status, setStatus] = useState(() => t('explore.loadingEngine'));
   const [startError, setStartError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [expectedLessonId, setExpectedLessonId] = useState('');
@@ -72,13 +82,13 @@ export function OpeningDrillPage() {
       const gs = useGameSessions.getState();
       const meta = gs.metas[sessionParam];
       const parsed = meta?.kind === 'lesson' && meta.lessonId ? parseDrillLessonId(meta.lessonId) : null;
-      if (!meta || !parsed || parsed.drillId !== rawId) { setStartError('该练习会话无法恢复'); return; }
-      const source = parsed.drillId === CUSTOM_DRILL_ID ? meta.drill : openingDrillById(parsed.drillId);
-      if (!source) { setStartError('该练习的开局书已丢失，无法恢复'); return; }
+      if (!meta || !parsed || parsed.drillId !== rawId) { setStartError(t('drill.restoreFail')); return; }
+      const restored = parsed.drillId === CUSTOM_DRILL_ID ? meta.drill : openingDrillById(parsed.drillId);
+      if (!restored) { setStartError(t('drill.bookLost')); return; }
       setBusy(true);
-      setStatus('正在恢复练习…');
+      setStatus(t('drill.restoring'));
       try {
-        const lesson = drillToLesson(source, parsed.color, parsed.startMode);
+        const lesson = drillToLesson(restored, parsed.color, parsed.startMode);
         await gs.loadSnapshot(sessionParam);
         const snap = gs.getLessonSnapshot(sessionParam);
         const difficulty = openingOpponentById(snap?.difficultyId ?? oppId);
@@ -86,7 +96,7 @@ export function OpeningDrillPage() {
         setColor(parsed.color);
         setStartMode(parsed.startMode);
         setOppId(difficulty.id);
-        setPlayDrill(source);
+        setPlayDrill(restored);
         setExpectedLessonId(lesson.id);
         const s = await bootLessonSession(lesson, difficulty);
         if (cancelled) return;
@@ -106,7 +116,7 @@ export function OpeningDrillPage() {
     return (
       <div className="page-shell text-sm text-ink">
         <NavBack onClick={() => navigate(originPath(origin))}>{originLabel(origin)}</NavBack>
-        <p className="mt-3">找不到该开局练习。</p>
+        <p className="mt-3">{t('drill.missing')}</p>
       </div>
     );
   }
@@ -114,12 +124,12 @@ export function OpeningDrillPage() {
   const start = async () => {
     setStartError(null);
     setBusy(true);
-    setStatus(isCustom ? '正在按你的要求生成对手开局书…' : '正在准备对局…');
+    setStatus(isCustom ? t('drill.generating') : t('drill.preparing'));
     try {
       let ready = drill;
       if (isCustom) {
-        if (!hasKey) throw new Error('请先在设置中配置 API Key');
-        ready = await generateCustomDrill(requirement, color, settingsLlmPort);
+        if (!hasKey) throw new Error(t('drill.needKey'));
+        ready = localizeContent(await generateCustomDrill(requirement, color, settingsLlmPort), locale);
       }
       setPlayDrill(ready);
       setPhase('play');
@@ -130,7 +140,7 @@ export function OpeningDrillPage() {
       const gs = useGameSessions.getState();
       gs.newLesson(
         lesson.id,
-        sessionLabel(ready.title, color, startMode, difficulty.label),
+        sessionLabel(ready.title, color, startMode, t(difficulty.id === 'hard' ? 'difficulty.oppHard' : 'difficulty.oppEasy'), t),
         isCustom ? { drill: ready } : undefined,
       );
       const s = await bootLessonSession(lesson, difficulty);
@@ -145,14 +155,14 @@ export function OpeningDrillPage() {
 
   if (phase === 'setup') {
     const selectCls = (on: boolean) =>
-      `min-h-11 cursor-pointer rounded-xl border px-3 py-2.5 text-left text-sm ${
-        on ? 'border-walnut bg-cream text-ink' : 'border-line bg-ivory text-ink'
+      `min-h-11 cursor-pointer rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-150 ${
+        on ? 'border-walnut bg-cream text-ink font-medium shadow-xs' : 'border-line bg-ivory text-ink hover:border-walnut/30'
       }`;
     return (
       <div className="page-shell mx-auto w-full max-w-xl">
         <div className="mb-5 flex items-center gap-3 text-sm">
           <NavBack to={originPath(origin)}>{originLabel(origin)}</NavBack>
-          <span className="text-muted">开局练习</span>
+          <span className="text-muted">{t('home.drills')}</span>
         </div>
         <h1 className="page-title">{drill.title}</h1>
         <p className="mt-2 text-sm text-muted">{drill.summary}</p>
@@ -160,23 +170,28 @@ export function OpeningDrillPage() {
 
         {isCustom && (
           <section className="mt-8">
-            <label htmlFor="drill-requirement" className="mb-2 block text-sm font-semibold text-ink">对手怎么走</label>
+            <label htmlFor="drill-requirement" className="mb-2 block text-sm font-semibold text-ink">{t('drill.requirement')}</label>
             <textarea
               id="drill-requirement"
               className="field h-28 w-full resize-none p-3 text-sm leading-relaxed"
-              placeholder="例如：伦敦应对西西里；对手走西班牙交换变例；黑棋走纳杰多夫"
+              placeholder={t('drill.placeholder')}
               value={requirement}
               disabled={busy}
               onChange={(e) => { setRequirement(e.target.value); setStartError(null); }}
             />
-            <p className="mt-1.5 text-xs text-muted">写开局名、变例，或「我走伦敦、对手走西西里」。</p>
+            <p className="mt-1.5 text-xs text-muted">{t('drill.hint')}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {['伦敦应对西西里', '西班牙交换变例', '对手走纳杰多夫', '法兰西挺进变例'].map((chip) => (
+              {([
+                t('drill.chip.londonSicilian'),
+                t('drill.chip.spanishEx'),
+                t('drill.chip.najdorf'),
+                t('drill.chip.french'),
+              ] as const).map((chip) => (
                 <button
                   key={chip}
                   type="button"
-                  className={`min-h-11 cursor-pointer rounded-full border px-3 text-sm transition duration-200 ${
-                    requirement === chip ? 'border-walnut bg-walnut text-walnut-fg' : 'border-line bg-ivory text-muted'
+                  className={`min-h-11 cursor-pointer rounded-full border px-3 text-sm transition-all duration-150 ${
+                    requirement === chip ? 'border-walnut bg-walnut text-walnut-fg font-medium shadow-xs' : 'border-line bg-ivory text-muted hover:border-walnut/30 hover:text-ink'
                   }`}
                   onClick={() => { setRequirement(chip); setStartError(null); }}
                 >
@@ -186,9 +201,9 @@ export function OpeningDrillPage() {
             </div>
             {!hasKey && (
               <div className="mt-3 flex flex-col items-start gap-2">
-                <p className="text-sm text-danger">自定义开局需要 API Key。</p>
+                <p className="text-sm text-danger">{t('drill.needKeyCustom')}</p>
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => setSettingsOpen(true)}>
-                  去配置 Key
+                  {t('missing.configure')}
                 </button>
               </div>
             )}
@@ -198,30 +213,36 @@ export function OpeningDrillPage() {
         {startError && <p className="mt-4 text-sm text-danger" role="alert">{startError}</p>}
 
         <section className="mt-8">
-          <h2 className="mb-2 text-sm font-semibold text-ink">执棋方</h2>
+          <h2 className="mb-2 text-sm font-semibold text-ink">{t('drill.side')}</h2>
           <div className="flex gap-2">
             {([
-              ['w', '执白'],
-              ['b', '执黑'],
+              ['w', t('drill.white')],
+              ['b', t('drill.black')],
             ] as const).map(([c, label]) => (
               <button
                 key={c}
                 type="button"
-                className={`min-w-0 flex-1 ${selectCls(color === c)}`}
+                className={`min-w-0 flex-1 flex items-center justify-center gap-2 ${selectCls(color === c)}`}
                 onClick={() => setColor(c)}
               >
-                {label}
+                <span
+                  className={`inline-block h-2.5 w-2.5 rounded-full ${
+                    c === 'w' ? 'bg-white border border-walnut' : 'bg-walnut'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="font-medium">{label}</span>
               </button>
             ))}
           </div>
         </section>
 
         <section className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold text-ink">起步方式</h2>
+          <h2 className="mb-2 text-sm font-semibold text-ink">{t('drill.startMode')}</h2>
           <div className="flex flex-col gap-2">
             {([
-              ['from-start', '从起始局面', '空棋盘开局；对手按该开局体系行棋（执黑时先走白方第一步）'],
-              ['tabiya', '对手先走出该开局前几步', '进入该开局的定式局面后再轮到你'],
+              ['from-start', t('drill.fromStart'), t('drill.fromStartHint')],
+              ['tabiya', t('drill.tabiya'), t('drill.tabiyaHint')],
             ] as const).map(([mode, label, hint]) => (
               <button
                 key={mode}
@@ -237,7 +258,7 @@ export function OpeningDrillPage() {
         </section>
 
         <section className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold text-ink">对手强度</h2>
+          <h2 className="mb-2 text-sm font-semibold text-ink">{t('drill.oppStrength')}</h2>
           <div className="flex gap-2">
             {OPENING_OPPONENTS.map((o) => (
               <button
@@ -246,9 +267,9 @@ export function OpeningDrillPage() {
                 className={`min-w-0 flex-1 ${selectCls(oppId === o.id)}`}
                 onClick={() => setOppId(o.id)}
               >
-                <span className="font-medium">{o.label}</span>
+                <span className="font-medium">{t(o.id === 'hard' ? 'difficulty.oppHard' : 'difficulty.oppEasy')}</span>
                 <span className="mt-0.5 block text-xs text-muted">
-                  {o.id === 'easy' ? '会出软着，练习抓机会' : '接近正确续着，对抗压力'}
+                  {o.id === 'easy' ? t('drill.oppEasyHint') : t('drill.oppHardHint')}
                 </span>
               </button>
             ))}
@@ -262,7 +283,7 @@ export function OpeningDrillPage() {
             disabled={busy || (isCustom && !requirement.trim())}
             onClick={() => void start()}
           >
-            {busy ? (isCustom ? '正在生成对手开局书…' : '正在准备对局…') : '开始练习'}
+            {busy ? (isCustom ? t('drill.busyCustom') : t('drill.busy')) : t('drill.start')}
           </button>
         </div>
         {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
@@ -283,7 +304,7 @@ export function OpeningDrillPage() {
       expectedLessonId={expectedLessonId || lesson.id}
       difficultyId={oppId}
       difficultyOptions={OPENING_OPPONENTS}
-      difficultyLabel="对手"
+      difficultyLabel={t('drill.opp')}
       onDifficulty={(did) => {
         setOppId(did);
         const next = drillToLesson(active, color, startMode);
@@ -294,12 +315,12 @@ export function OpeningDrillPage() {
             gs.saveLessonSnapshot(
               gs.activeLessonId,
               snap,
-              sessionLabel(active.title, color, startMode, openingOpponentById(did).label),
+              sessionLabel(active.title, color, startMode, t(did === 'hard' ? 'difficulty.oppHard' : 'difficulty.oppEasy'), t),
             );
           }
         });
       }}
-      backLabel={origin === 'analyses' ? '我的分析' : active.title}
+      backLabel={origin === 'analyses' ? t('home.analyses') : localizeContent(active, locale).title}
       onBack={() => {
         if (origin === 'analyses') {
           navigate('/analyses');

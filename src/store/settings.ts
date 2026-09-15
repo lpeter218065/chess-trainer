@@ -5,6 +5,10 @@ import { normalizeLlmBaseUrl } from '../llm/client';
 import type { DifficultyId } from '../engine/difficulty';
 import { createPlatformStorage } from '../platform/storage';
 import { setApiKey } from '../platform/secureStore';
+import type { LocalePreference } from '../i18n/locale';
+import { parsePieceSet, type PieceSetId } from '../chess/pieceSet';
+import { parseBoardTheme, type BoardThemeId } from '../chess/boardTheme';
+import { parsePieceColor, type PieceColorId } from '../chess/pieceColor';
 
 interface SettingsState {
   llm: LlmConfig;
@@ -12,10 +16,18 @@ interface SettingsState {
   difficultyId: DifficultyId;
   /** 摇一摇 / 三指触屏呼出调试日志。默认关闭，避免误触；设置里的「查看日志」按钮不受影响。 */
   debugGesturesEnabled: boolean;
+  localePref: LocalePreference;
+  pieceSet: PieceSetId;
+  boardTheme: BoardThemeId;
+  pieceColor: PieceColorId;
   setLlm(partial: Partial<LlmConfig>): void;
   setTemperature(t: number): void;
   setDifficultyId(id: DifficultyId): void;
   setDebugGesturesEnabled(v: boolean): void;
+  setLocalePref(pref: LocalePreference): void;
+  setPieceSet(id: PieceSetId): void;
+  setBoardTheme(id: BoardThemeId): void;
+  setPieceColor(id: PieceColorId): void;
 }
 
 type EnvBag = {
@@ -42,6 +54,10 @@ export function partializeSettings(s: SettingsState) {
     temperature: s.temperature,
     difficultyId: s.difficultyId,
     debugGesturesEnabled: s.debugGesturesEnabled,
+    localePref: s.localePref,
+    pieceSet: s.pieceSet,
+    boardTheme: s.boardTheme,
+    pieceColor: s.pieceColor,
     llm: {
       baseUrl: s.llm.baseUrl,
       model: s.llm.model,
@@ -57,6 +73,10 @@ export const useSettings = create<SettingsState>()(
       temperature: 0.8,
       difficultyId: 'medium',
       debugGesturesEnabled: false,
+      localePref: 'system',
+      pieceSet: 'classic',
+      boardTheme: 'walnut',
+      pieceColor: 'standard',
       setLlm: (partial) => {
         set((s) => ({
           llm: {
@@ -72,6 +92,10 @@ export const useSettings = create<SettingsState>()(
       setTemperature: (temperature) => set({ temperature }),
       setDifficultyId: (difficultyId) => set({ difficultyId }),
       setDebugGesturesEnabled: (debugGesturesEnabled) => set({ debugGesturesEnabled }),
+      setLocalePref: (localePref) => set({ localePref }),
+      setPieceSet: (id) => set({ pieceSet: parsePieceSet(id) }),
+      setBoardTheme: (id) => set({ boardTheme: parseBoardTheme(id) }),
+      setPieceColor: (id) => set({ pieceColor: parsePieceColor(id) }),
     }),
     {
       name: 'chess-trainer-settings',
@@ -85,6 +109,10 @@ export const useSettings = create<SettingsState>()(
         return {
           ...current,
           ...p,
+          localePref: p.localePref ?? current.localePref,
+          pieceSet: parsePieceSet(p.pieceSet ?? current.pieceSet),
+          boardTheme: parseBoardTheme(p.boardTheme ?? current.boardTheme),
+          pieceColor: parsePieceColor(p.pieceColor ?? current.pieceColor),
           llm: {
             ...current.llm,
             ...stored,

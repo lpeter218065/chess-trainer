@@ -1,0 +1,5 @@
+CFBundleDisplayName = "国际象棋训练";
+CFBundleName = "国际象棋训练";
+NSMicrophoneUsageDescription = "说话问教练时需要用到麦克风。";
+NSSpeechRecognitionUsageDescription = "把你说的话变成文字，方便问教练。";
+NSMotionUsageDescription = "摇一摇打开调试日志，查看讲解请求和错误信息。";

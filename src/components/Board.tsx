@@ -6,11 +6,9 @@ import { ARROW_COLORS } from '../chess/annotations';
 import type { CommentaryFocus } from '../chess/commentaryMarkers';
 import { EMPTY_TAP, tapMoveReducer, type TapState } from '../chess/tapMove';
 import { isIncrementalFen } from '../chess/notation';
-
-const HOVER_SQUARE = 'rgba(61, 41, 30, 0.38)';
-const HOVER_ARROW = '#3d291e';
-const SELECT_SQUARE = 'rgba(154, 123, 69, 0.48)';
-const TARGET_DOT = 'radial-gradient(circle, rgba(61,41,30,0.42) 19%, transparent 21%)';
+import { squaresForTheme } from '../chess/boardTheme';
+import { piecesForSet } from '../chess/pieceSet';
+import { useSettings } from '../store/settings';
 
 export interface BoardProps {
   fen: string;
@@ -57,6 +55,11 @@ function BoardImpl({
   onMove,
   onBackgroundTap,
 }: BoardProps) {
+  const pieceSet = useSettings((s) => s.pieceSet);
+  const pieceColor = useSettings((s) => s.pieceColor);
+  const boardTheme = useSettings((s) => s.boardTheme);
+  const theme = squaresForTheme(boardTheme);
+  const pieces = useMemo(() => piecesForSet(pieceSet, pieceColor), [pieceSet, pieceColor]);
   const [tap, setTap] = useState<TapState>(EMPTY_TAP);
   const lastTapRef = useRef<string | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -119,20 +122,20 @@ function BoardImpl({
       s[sq.square] = { backgroundColor: sq.color };
     }
     for (const sq of hoverFocus?.squares ?? []) {
-      s[sq] = { backgroundColor: HOVER_SQUARE };
+      s[sq] = { backgroundColor: theme.hover };
     }
     if (lastMove) {
-      s[lastMove.from] = { backgroundColor: 'rgba(154, 123, 69, 0.42)' };
-      s[lastMove.to] = { backgroundColor: 'rgba(154, 123, 69, 0.62)' };
+      s[lastMove.from] = { backgroundColor: theme.lastFrom };
+      s[lastMove.to] = { backgroundColor: theme.lastTo };
     }
     if (tap.selected) {
-      s[tap.selected] = { backgroundColor: SELECT_SQUARE };
+      s[tap.selected] = { backgroundColor: theme.select };
     }
     for (const to of tap.targets) {
-      s[to] = { ...(s[to] ?? {}), backgroundImage: TARGET_DOT };
+      s[to] = { ...(s[to] ?? {}), backgroundImage: theme.target };
     }
     return s;
-  }, [annotations, hoverFocus, lastMove, tap]);
+  }, [annotations, hoverFocus, lastMove, tap, theme]);
 
   const arrows = useMemo(() => {
     const list = [...(annotations?.arrows ?? [])];
@@ -140,10 +143,10 @@ function BoardImpl({
       list.push({ ...hintArrow, color: ARROW_COLORS.hint });
     }
     for (const a of hoverFocus?.arrows ?? []) {
-      list.push({ from: a.from, to: a.to, color: HOVER_ARROW });
+      list.push({ from: a.from, to: a.to, color: theme.hoverArrow });
     }
     return list.map((a) => ({ startSquare: a.from, endSquare: a.to, color: a.color }));
-  }, [annotations, hintArrow, hoverFocus]);
+  }, [annotations, hintArrow, hoverFocus, theme]);
 
   const onPieceDrop = useCallback(({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) => {
     if (!interactive || !targetSquare) return false;
@@ -153,6 +156,7 @@ function BoardImpl({
   const options = useMemo(() => ({
     id: 'trainer-board',
     position: fen,
+    pieces,
     boardOrientation: orientation,
     allowDragging: interactive,
     dragActivationDistance: 8,
@@ -164,6 +168,8 @@ function BoardImpl({
       return ownPieceSquares.has(square);
     },
     squareStyles,
+    lightSquareStyle: { backgroundColor: theme.light },
+    darkSquareStyle: { backgroundColor: theme.dark },
     boardStyle: side > 0 ? { width: side, height: side } : { width: '100%', height: '100%' },
     arrows,
     onPieceDrop,
@@ -177,7 +183,7 @@ function BoardImpl({
     onSquareClick: ({ square }: { square: string }) => {
       applyTap(square);
     },
-  }), [fen, orientation, interactive, ownPieceSquares, squareStyles, arrows, onPieceDrop, applyTap, side, showAnimations]);
+  }), [fen, orientation, interactive, ownPieceSquares, squareStyles, arrows, onPieceDrop, applyTap, side, showAnimations, pieces, theme]);
 
   return (
     <div

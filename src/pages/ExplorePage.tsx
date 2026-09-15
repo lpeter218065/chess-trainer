@@ -32,6 +32,7 @@ import type { CommentaryFocusMode } from '../components/AnnotatedCommentary';
 import { ExploreCommentary, useExploreCommentaryPresence } from '../components/explore/ExploreCommentary';
 import { ExploreAssessment } from '../components/explore/ExploreAssessment';
 import { ExploreFollowUpComposer } from '../components/explore/ExploreFollowUpComposer';
+import { useT } from '../i18n';
 
 function keyToNav(key: string): PlyNav | null {
   if (key === 'ArrowLeft') return 'back';
@@ -42,8 +43,9 @@ function keyToNav(key: string): PlyNav | null {
 }
 
 export function ExplorePage() {
+  const t = useT();
   const [store, setStore] = useState<StoreApi<ExploreState> | null>(null);
-  const [status, setStatus] = useState('正在加载引擎…');
+  const [status, setStatus] = useState(() => t('explore.loadingEngine'));
   const [searchParams, setSearchParams] = useSearchParams();
   const sessionParam = searchParams.get('session');
 
@@ -61,7 +63,7 @@ export function ExplorePage() {
         }
         if (!cancelled) setStore(s);
       } catch (e) {
-        if (!cancelled) setStatus(`引擎加载失败：${String(e)}`);
+        if (!cancelled) setStatus(t('explore.engineFail', { msg: String(e) }));
       }
     })();
     return () => {
@@ -107,6 +109,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
   const hasKey = useSettings((st) => Boolean(st.llm.apiKey));
   const location = useLocation();
   const origin = originFromState(location.state);
+  const t = useT();
 
   const history = useMemo(() => pathSans(tree, path), [tree, path]);
   // 与 store 的 viewedPly() / isLive() 同义，改为本地计算以免订阅整个 store
@@ -191,7 +194,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
 
   const importPgn = () => {
     if (!store.getState().importPgn(pgnInput)) {
-      setImportError('无法解析 PGN，请检查格式');
+      setImportError(t('explore.pgnFail'));
       return;
     }
     setImportError(null);
@@ -200,7 +203,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
 
   const loadFen = () => {
     if (!store.getState().loadFen(fenInput)) {
-      setImportError('无效的 FEN');
+      setImportError(t('explore.fenFail'));
       return;
     }
     setImportError(null);
@@ -242,7 +245,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
           <div className="trainer-nav-start">
             <NavBack to={originPath(origin)}>{originLabel(origin)}</NavBack>
           </div>
-          <h1 className="trainer-nav-title">自由探索</h1>
+          <h1 className="trainer-nav-title">{t('explore.title')}</h1>
           <div className="trainer-nav-end">
             <SessionBar
               trigger="more"
@@ -264,7 +267,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                   className="flex min-h-11 w-full items-center px-2 text-left text-sm text-ink"
                   role="menuitem"
                 >
-                  我的分析
+                  {t('home.analyses')}
                 </Link>
               }
             />
@@ -300,8 +303,8 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
               type="button"
               className="btn btn-sm"
               disabled={ply <= 0}
-              aria-label="上一步"
-              title={ply <= 0 ? '已经是起始局面' : '上一步'}
+              aria-label={t('trainer.prev')}
+              title={ply <= 0 ? t('trainer.atStart') : t('trainer.prev')}
               onClick={() => stepReview('back')}
             >
               ←
@@ -310,8 +313,8 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
               type="button"
               className="btn btn-sm"
               disabled={isLive}
-              aria-label="下一步"
-              title={isLive ? '已经是最新局面' : '下一步'}
+              aria-label={t('trainer.next')}
+              title={isLive ? t('trainer.atLive') : t('trainer.next')}
               onClick={() => stepReview('forward')}
             >
               →
@@ -319,30 +322,30 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
             <ToolToggle
               pressed={showAnnotations}
               disabled={!boardAnnotations}
-              title={!boardAnnotations ? (analyzing ? '引擎分析完成后可显示箭头' : '还没有分析') : undefined}
+              title={!boardAnnotations ? (analyzing ? t('trainer.arrowsAfterEngine') : t('trainer.noAnalysis')) : undefined}
               onClick={() => setShowAnnotations((v) => !v)}
             >
-              分析
+              {t('trainer.analyze')}
             </ToolToggle>
             <BoardMoreMenu
               items={[
                 {
                   id: 'candidates',
-                  label: '候选',
+                  label: t('trainer.candidates'),
                   pressed: showCandidates,
                   onClick: () => setShowCandidates((v) => !v),
                 },
                 {
                   id: 'assessment',
-                  label: '局面',
+                  label: t('trainer.position'),
                   pressed: showAssessment,
                   disabled: !hasKey,
-                  reason: !hasKey ? '请先配置 API Key' : undefined,
+                  reason: !hasKey ? t('trainer.needKey') : undefined,
                   onClick: () => setShowAssessment((v) => !v),
                 },
                 {
                   id: 'flip',
-                  label: '翻转',
+                  label: t('trainer.flip'),
                   pressed: orientation === 'black',
                   onClick: () => store.getState().setOrientation(orientation === 'white' ? 'black' : 'white'),
                 },
@@ -350,9 +353,9 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
             />
           </BoardToolbar>
           <BoardStatus error={error}>
-              {analyzing && '引擎分析中，可继续走棋'}
-              {!analyzing && isLive && '点子或拖子均可 · 走子后自动分析'}
-              {!analyzing && !isLive && '回看中 · 走子将进入变着'}
+              {analyzing && t('explore.analyzingPlay')}
+              {!analyzing && isLive && t('explore.liveHint')}
+              {!analyzing && !isLive && t('explore.reviewHint')}
           </BoardStatus>
           </div>
         </div>
@@ -361,13 +364,13 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
       panels={[
         {
           id: 'analysis',
-          label: '讲解',
+          label: t('trainer.commentary'),
           disabled: !hasKey,
           content: (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <section className="flex min-h-0 flex-[1.2] flex-col overflow-hidden border-b border-line p-3">
                 <div className="relative mb-2 flex shrink-0 items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold text-ink">局面讲解</h2>
+                  <h2 className="text-sm font-semibold text-ink">{t('explore.commentary')}</h2>
                   <div className="flex items-center gap-1">
                     {commentaryHistory.length > 1 && (
                       <button
@@ -376,24 +379,24 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                         aria-expanded={historyOpen}
                         onClick={() => setHistoryOpen((v) => !v)}
                       >
-                        历史 {commentaryHistory.length}
+                        {t('explore.historyCount', { n: commentaryHistory.length })}
                       </button>
                     )}
                     {llmStreaming && (
-                      <span className="text-xs text-muted">{analyzing ? '等待引擎…' : '生成中…'}</span>
+                      <span className="text-xs text-muted">{analyzing ? t('explore.waitingEngine') : t('explore.generating')}</span>
                     )}
                     {hasSavedCommentaryAtPly && !llmStreaming && (
                       <button
                         type="button"
                         className="btn btn-sm text-muted"
                         disabled={!hasKey}
-                        title="分叉无关：强制新开本局面的 GPT session"
+                        title={t('explore.forceSession')}
                         onClick={() => {
                           setCommentaryOpen(true);
                           void store.getState().requestCommentary({ forceNew: true });
                         }}
                       >
-                        重新讲解
+                        {t('explore.reExplain')}
                       </button>
                     )}
                   </div>
@@ -446,7 +449,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                     <>
                       {hasKey && (
                         <div className="flex flex-col items-start gap-2">
-                          <p className="text-sm text-muted">还没有这步的讲解。切回已讲过的局面会自动显示。</p>
+                          <p className="text-sm text-muted">{t('explore.noNote')}</p>
                           <button
                             type="button"
                             className="btn btn-primary"
@@ -456,7 +459,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                               void store.getState().requestCommentary();
                             }}
                           >
-                            {llmStreaming ? '生成中…' : '讲解这步'}
+                            {llmStreaming ? t('explore.generating') : t('explore.explainMove')}
                           </button>
                         </div>
                       )}
@@ -466,7 +469,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                 </div>
               </section>
               <section className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
-                <h2 className="mb-2 shrink-0 text-sm font-semibold text-ink">着法</h2>
+                <h2 className="mb-2 shrink-0 text-sm font-semibold text-ink">{t('explore.moves')}</h2>
                 <div className="min-h-0 flex-1 overflow-y-auto">
                   <VariationMoveList
                     tree={tree}
@@ -475,26 +478,26 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                     onSelectNode={onSelectNode}
                   />
                 </div>
-                <p className="mt-2 shrink-0 text-[11px] text-muted">← → 回退/前进 · 回退后可走变着</p>
+                <p className="mt-2 shrink-0 text-[11px] text-muted">{t('explore.navHint')}</p>
               </section>
             </div>
           ),
         },
         {
           id: 'import',
-          label: '导入',
+          label: t('explore.import'),
           content: (
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3">
               <label htmlFor="pgn-input" className="text-sm font-medium text-ink">PGN</label>
               <textarea
                 id="pgn-input"
                 className="field min-h-32 flex-1 resize-none font-mono text-xs"
-                placeholder={'粘贴 PGN，例如：\n1. e4 e5 2. Nf3 Nc6 3. Bb5'}
+                placeholder={t('explore.pgnPlaceholder')}
                 value={pgnInput}
                 onChange={(e) => setPgnInput(e.target.value)}
               />
               <button type="button" className="btn btn-primary shrink-0" onClick={importPgn}>
-                导入 PGN
+                {t('explore.importPgn')}
               </button>
               <label htmlFor="fen-input" className="mt-2 text-sm font-medium text-ink">FEN</label>
               <input
@@ -505,7 +508,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
                 onChange={(e) => setFenInput(e.target.value)}
               />
               <button type="button" className="btn shrink-0" onClick={loadFen}>
-                加载 FEN
+                {t('explore.loadFen')}
               </button>
               {importError && <p className="text-xs text-danger" role="alert">{importError}</p>}
             </div>

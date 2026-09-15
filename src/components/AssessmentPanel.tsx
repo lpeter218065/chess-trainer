@@ -1,5 +1,6 @@
 import { AnnotatedCommentary, type CommentaryFocusMode } from './AnnotatedCommentary';
 import type { CommentaryFocus } from '../chess/commentaryMarkers';
+import { useT } from '../i18n';
 
 export function AssessmentPanel({
   side,
@@ -22,12 +23,13 @@ export function AssessmentPanel({
   activeFocus?: CommentaryFocus | null;
   onRetry?: () => void;
 }) {
+  const t = useT();
   return (
     <section className="rounded-xl border border-line bg-cream/70 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold text-walnut">局面判断</h3>
-        <div className="flex gap-1" role="group" aria-label="判断视角">
-          {([['w', '白棋'], ['b', '黑棋']] as const).map(([c, label]) => (
+        <h3 className="text-xs font-semibold text-walnut">{t('assess.title')}</h3>
+        <div className="flex gap-1" role="group" aria-label={t('assess.view')}>
+          {([['w', t('assess.white')], ['b', t('assess.black')]] as const).map(([c, label]) => (
             <button
               key={c}
               type="button"
@@ -43,7 +45,7 @@ export function AssessmentPanel({
       <AnnotatedCommentary
         text={text}
         streaming={streaming}
-        placeholder={error ? '' : '还没有局面判断'}
+        placeholder={error ? '' : t('assess.empty')}
         onFocus={onFocus}
         showHoverHint={text.length > 0 && !streaming}
         focusMode={focusMode}
@@ -52,7 +54,7 @@ export function AssessmentPanel({
       {error && (
         <div className="mt-2 flex items-center justify-between gap-2 text-xs text-danger" role="alert">
           <span className="min-w-0 flex-1">{error}</span>
-          {onRetry && <button type="button" className="btn btn-sm shrink-0" onClick={onRetry}>重试</button>}
+          {onRetry && <button type="button" className="btn btn-sm shrink-0" onClick={onRetry}>{t('assess.retry')}</button>}
         </div>
       )}
     </section>

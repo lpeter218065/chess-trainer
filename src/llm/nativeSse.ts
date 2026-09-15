@@ -1,4 +1,5 @@
 import { debugLog } from '../debug/log';
+import { tl } from '../i18n';
 
 export type NativeSseOpen = { id: string; status: number; headers?: Record<string, string> };
 export type NativeSseChunk = { id: string; chunk: string };
@@ -128,7 +129,7 @@ export function nativeSseFetch(
           void plugin.cancel({ id });
           removeListeners();
           debugLog('error', 'sse', `open timeout ${openTimeoutMs}ms`);
-          reject(new Error(`原生 SSE 等待响应超时（${openTimeoutMs}ms）`));
+          reject(new Error(tl('error.sseTimeout', { ms: openTimeoutMs })));
         }, openTimeoutMs);
         void openP.then(() => clearTimeout(t), () => clearTimeout(t));
       }),

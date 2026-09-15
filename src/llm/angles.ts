@@ -19,6 +19,21 @@ export const ANGLE_GUIDE: Record<Angle, string> = {
   history: '侧重典型例子：这个结构或局面类型在开局理论或著名对局中的地位。只说你确有把握的内容，不确定就改为讲一般规律。',
 };
 
+export const ANGLE_GUIDE_EN: Record<Angle, string> = {
+  tactics: 'Focus on tactics: threats, pins, forks, hanging pieces. Say why this move is safe or not, quoting the given engine line.',
+  plan: 'Focus on the plan: which middlegame plan this move serves, how it ties to the lesson theme, and the natural two- or three-move continuation.',
+  structure: 'Focus on pawn structure: the long-term effect of this move (or the one it declined) on the pawns, and which squares get stronger or weaker.',
+  pieces: 'Focus on pieces: which piece improved or worsened, the trade-off of an exchange, and whose pieces coordinate better.',
+  king: 'Focus on king safety: attacking or defending the king, whether the king’s pawns loosened, and who is closer to creating a threat.',
+  compare: 'Focus on comparison: first name the problem with the user’s move, then explain why the engine’s better move is better, using the given line for concrete consequences.',
+  principle: 'Focus on a principle: in two or three sentences, state one given principle, why it holds, when it fails, then hook it to this position.',
+  history: 'Focus on typical examples: the place of this structure or position-type in opening theory or famous games. Only say what you are sure of; otherwise speak in general terms.',
+};
+
+export function angleGuide(angle: Angle, locale: 'zh' | 'en'): string {
+  return locale === 'en' ? ANGLE_GUIDE_EN[angle] : ANGLE_GUIDE[angle];
+}
+
 export interface ChooseParams {
   quality: Quality;
   evalSwing: number; // |evalAfter - evalBefore|

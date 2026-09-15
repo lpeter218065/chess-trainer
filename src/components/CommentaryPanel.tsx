@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Round, SessionState } from '../store/session';
-import { QUALITY_LABEL, type Quality } from '../chess/quality';
-import { ANGLE_LABEL } from '../llm/angles';
+import type { Quality } from '../chess/quality';
+import { useT } from '../i18n';
+import type { ChromeKey } from '../i18n';
 import { AnnotatedCommentary, type CommentaryFocusMode } from './AnnotatedCommentary';
 import { FollowUpChat } from './FollowUpChat';
 import { lessonFollowUpThreadId } from '../llm/prompts';
@@ -59,6 +60,7 @@ export function CommentaryPanel({
   hideComposer = false,
   onRetry,
 }: Props) {
+  const t = useT();
   const [historyOpen, setHistoryOpen] = useState(false);
   const introThread = lessonFollowUpThreadId('intro');
   const activeRound = activeRoundIndex >= 0 ? rounds[activeRoundIndex] : undefined;
@@ -70,7 +72,7 @@ export function CommentaryPanel({
 
   const historyItems: { index: number; label: string; preview: string }[] = [];
   if (!showingIntro && (intro.length > 0 || streaming === 'intro')) {
-    historyItems.push({ index: -1, label: '开场', preview: previewText(intro) });
+    historyItems.push({ index: -1, label: t('notes.intro'), preview: previewText(intro) });
   }
   for (const r of rounds) {
     if (showingIntro || r.index !== activeRoundIndex) {
@@ -92,7 +94,7 @@ export function CommentaryPanel({
             aria-expanded={historyOpen}
             onClick={() => setHistoryOpen((v) => !v)}
           >
-            此前讲解 {historyItems.length}
+            {t('notes.historyCount', { n: historyItems.length })}
           </button>
           {historyOpen && (
             <ul className="menu absolute left-0 right-0 z-10 mt-1.5 max-h-36 py-1">
@@ -118,11 +120,11 @@ export function CommentaryPanel({
 
       {showingIntro && (
         <section className="rounded-xl border border-line p-3">
-          <h3 className="mb-1 text-xs font-semibold text-muted">开场</h3>
+          <h3 className="mb-1 text-xs font-semibold text-muted">{t('notes.intro')}</h3>
           <AnnotatedCommentary
             text={intro}
             streaming={streaming === 'intro'}
-            placeholder={llmError ? '' : '还没有开场讲解'}
+            placeholder={llmError ? '' : t('notes.noIntro')}
             onFocus={onFocus}
             showHoverHint={intro.length > 0 && streaming !== 'intro'}
             focusMode={focusMode}
@@ -150,14 +152,14 @@ export function CommentaryPanel({
           <div className="mb-1 flex items-center gap-2 text-xs">
             <span className="font-mono text-ink">{roundLabel(activeRound)}</span>
             <span className={`rounded px-1.5 py-0.5 text-white ${QUALITY_CLASS[activeRound.userMove.quality]}`}>
-              {QUALITY_LABEL[activeRound.userMove.quality]}
+              {t(`quality.${activeRound.userMove.quality}` as ChromeKey)}
             </span>
-            <span className="text-muted">{ANGLE_LABEL[activeRound.angle]}</span>
+            <span className="text-muted">{t(`angle.${activeRound.angle}` as ChromeKey)}</span>
           </div>
           <AnnotatedCommentary
             text={activeRound.commentary}
             streaming={streamingThisRound}
-            placeholder={llmError ? '' : '这一步还没有讲解'}
+            placeholder={llmError ? '' : t('notes.noMove')}
             onFocus={onFocus}
             showHoverHint={activeRound.commentary.length > 0 && !streamingThisRound}
             focusMode={focusMode}
@@ -182,7 +184,7 @@ export function CommentaryPanel({
       {llmError && (
         <div className="flex items-center justify-between gap-2 rounded-lg bg-red-50 p-2 text-xs text-danger" role="alert">
           <span className="min-w-0 flex-1">{llmError}</span>
-          {onRetry && <button type="button" className="btn btn-sm shrink-0" onClick={onRetry}>重试</button>}
+          {onRetry && <button type="button" className="btn btn-sm shrink-0" onClick={onRetry}>{t('assess.retry')}</button>}
         </div>
       )}
     </div>

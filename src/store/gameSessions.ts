@@ -10,6 +10,7 @@ import type { OpeningDrill } from '../lessons/openingDrills';
 import type { Angle } from '../llm/angles';
 import type { Phase, Round } from './session';
 import type { Outcome } from '../chess/result';
+import { tl } from '../i18n';
 
 export type SessionKind = 'explore' | 'lesson';
 
@@ -135,7 +136,8 @@ function newId() {
 
 function defaultExploreTitle() {
   const d = new Date();
-  return `探索 · ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+  return tl('session.exploreNow', { time });
 }
 
 const gameSessionStorage = debounceStorage(createPlatformStorage('large'), 400);
@@ -348,7 +350,7 @@ export const useGameSessions = create<GameSessionsState>()(
         const meta: SessionMeta = {
           id,
           kind: 'lesson',
-          title: title.trim() || '课程',
+          title: title.trim() || tl('session.defaultLesson'),
           updatedAt: nowIso(),
           lessonId,
           ...(extra?.drill ? { drill: extra.drill } : {}),

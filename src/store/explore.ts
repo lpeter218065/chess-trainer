@@ -23,6 +23,7 @@ import { START_FEN, parseFen, parsePgn } from '../chess/pgn';
 import { createDebouncer, ANALYZE_DEBOUNCE_MS, LLM_DEBOUNCE_MS } from '../utils/debounce';
 import { createStreamFlusher } from '../utils/streamFlusher';
 import { debugLog } from '../debug/log';
+import { tl } from '../i18n';
 import {
   appendChild,
   createEmptyTree,
@@ -126,7 +127,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
 
     const sansLabelAt = (path: MoveNodeId[], ply: number) => {
       const sans = pathSans(get().tree, path).slice(0, ply);
-      if (sans.length === 0) return '起始局面';
+      if (sans.length === 0) return tl('session.startPosition');
       return sans.map((san, i) => (i % 2 === 0 ? `${Math.floor(i / 2) + 1}.${san}` : san)).join(' ');
     };
 
@@ -152,7 +153,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
         set({ analysis, evalCp: whiteEval(analysis), analyzing: false });
       }, (e: unknown) => {
         if (token !== analyzeToken || controller.signal.aborted) return;
-        set({ analyzing: false, error: `分析失败：${(e as Error).message}` });
+        set({ analyzing: false, error: tl('error.analyze', { msg: (e as Error).message }) });
       });
       return pending;
     };
@@ -238,7 +239,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
       const flusher = createStreamFlusher((text) => set({ commentary: text, commentaryPly: ply }));
       try {
         if (!(await ensureAnalysisFor(fen, ply, ac.signal))) {
-          if (!ac.signal.aborted) set({ llmError: '引擎分析未完成，无法生成讲解' });
+          if (!ac.signal.aborted) set({ llmError: tl('error.engineNoPv') });
           return;
         }
         const s = get();
@@ -283,7 +284,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
         }
       } catch (e) {
         debugLog('error', 'explore', `commentary ${(e as Error).message}`);
-        if (!ac.signal.aborted) set({ llmError: `讲解失败：${(e as Error).message}` });
+        if (!ac.signal.aborted) set({ llmError: tl('error.commentary', { msg: (e as Error).message }) });
       } finally {
         flusher.cancel();
         debugLog('info', 'explore', `commentary done streaming=${llmAbort === ac} chars=${flusher.text.length}`);
@@ -318,7 +319,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
       const flusher = createStreamFlusher((text) => set({ assessment: text }));
       try {
         if (!(await ensureAnalysisFor(fen, ply, ac.signal))) {
-          if (!ac.signal.aborted) set({ llmError: '引擎分析未完成，无法做局面判断' });
+          if (!ac.signal.aborted) set({ llmError: tl('error.engineNoAssess') });
           return;
         }
         const s = get();
@@ -344,7 +345,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
           assessmentThread = { side, messages: recordAssistant(messages, acc) };
         }
       } catch (e) {
-        if (!ac.signal.aborted) set({ llmError: `局面判断失败：${(e as Error).message}` });
+        if (!ac.signal.aborted) set({ llmError: tl('error.assessment', { msg: (e as Error).message }) });
       } finally {
         flusher.cancel();
         if (llmAbort === ac) {
@@ -409,7 +410,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
         }
       } catch (e) {
         if (!ac.signal.aborted) {
-          set({ followUpStreaming: false, followUpDraft: '', followUpError: `追问失败：${(e as Error).message}`, followUpThreadId: null });
+          set({ followUpStreaming: false, followUpDraft: '', followUpError: tl('error.followUp', { msg: (e as Error).message }), followUpThreadId: null });
         }
       } finally {
         flusher.cancel();
@@ -595,7 +596,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
             }
           } catch (e) {
             if (token !== analyzeToken) return;
-            set({ error: `着法评分失败：${(e as Error).message}` });
+            set({ error: tl('error.score', { msg: (e as Error).message }) });
           }
         })();
         return true;
@@ -732,7 +733,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
               path: snap.path.slice(0, snap.commentaryPly),
               ply: snap.commentaryPly,
               text: snap.commentary,
-              sansLabel: pathSans(snap.tree, snap.path).slice(0, snap.commentaryPly).join(' ') || '起始局面',
+              sansLabel: pathSans(snap.tree, snap.path).slice(0, snap.commentaryPly).join(' ') || tl('session.startPosition'),
               updatedAt: new Date().toISOString(),
             },
           };

@@ -4,6 +4,8 @@ import { fenAfterSans } from './drillLesson';
 import { START_FEN } from '../chess/pgn';
 import type { ChatMessage } from '../llm/client';
 import type { LlmPort } from '../store/session';
+import { liveLocale, tl } from '../i18n';
+import { sideName } from '../llm/promptCopy';
 
 export const CUSTOM_DRILL_ID = 'custom';
 
@@ -25,7 +27,7 @@ export function extractJsonObject(raw: string): unknown {
   const text = (fence?.[1] ?? raw).trim();
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
-  if (start < 0 || end <= start) throw new Error('模型没有返回可解析的开局书 JSON');
+  if (start < 0 || end <= start) throw new Error(tl('error.customNoJson'));
   return JSON.parse(text.slice(start, end + 1)) as unknown;
 }
 
@@ -52,7 +54,7 @@ export function sanitizeOpponentBook(lines: unknown): string[][] {
 
 /** 从主变截出定式：白走后偶数步、黑走后奇数步 */
 export function tabiyaFromBookLine(line: string[]): { whiteTabiyaLine: string[]; blackStartLine: string[] } {
-  if (line.length < 2) throw new Error('开局书主变太短，请让模型给出至少两步');
+  if (line.length < 2) throw new Error(tl('error.customShort'));
   const blackLen = line.length % 2 === 1 ? Math.min(line.length, 5) : Math.max(1, Math.min(line.length - 1, 5));
   let whiteLen = line.length % 2 === 0 ? Math.min(line.length, 6) : Math.min(line.length - 1, 6);
   if (whiteLen < 2 && line.length >= 2) whiteLen = 2;
@@ -72,20 +74,25 @@ interface CustomPayload {
 export function customDrillFromPayload(requirement: string, payload: unknown, playerColor: Color): OpeningDrill {
   const p = payload as CustomPayload;
   const book = sanitizeOpponentBook(p.opponentBook);
-  if (book.length === 0) throw new Error('开局书没有合法着法，请换一种说法再试');
+  if (book.length === 0) throw new Error(tl('error.customEmptyBook'));
   const tabiya = tabiyaFromBookLine(book[0]);
-  const title = String(p.title ?? '').trim() || requirement.trim().slice(0, 24) || '自定义开局';
+  const title = String(p.title ?? '').trim() || requirement.trim().slice(0, 24) || (liveLocale() === 'en' ? 'Custom opening' : '自定义开局');
   const summary = String(p.summary ?? '').trim() || requirement.trim();
   const keyIdeas = Array.isArray(p.keyIdeas)
     ? p.keyIdeas.map((x) => String(x).trim()).filter(Boolean).slice(0, 6)
     : [];
-  const side = playerColor === 'w' ? '白' : '黑';
+  const locale = liveLocale();
+  const side = locale === 'en' ? (playerColor === 'w' ? 'White' : 'Black') : (playerColor === 'w' ? '白' : '黑');
   return {
     id: CUSTOM_DRILL_ID,
     title,
     summary,
-    theme: `按要求练习（你执${side}）：${requirement.trim()}。对手按该开局/变例行棋，离开书后交给引擎。`,
-    keyIdeas: keyIdeas.length > 0 ? keyIdeas : ['按要求的体系出子', '注意对手离开变例时的机会'],
+    theme: locale === 'en'
+      ? `Drill by request (you play ${side}): ${requirement.trim()}. The opponent follows that opening; after leaving the book, the engine takes over.`
+      : `按要求练习（你执${side}）：${requirement.trim()}。对手按该开局/变例行棋，离开书后交给引擎。`,
+    keyIdeas: keyIdeas.length > 0 ? keyIdeas : locale === 'en'
+      ? ['Develop in the requested system', 'Punish when the opponent leaves the line']
+      : ['按要求的体系出子', '注意对手离开变例时的机会'],
     principleIds: ['development-order', 'center-control'],
     whiteTabiyaLine: tabiya.whiteTabiyaLine,
     blackStartLine: tabiya.blackStartLine,
@@ -95,8 +102,33 @@ export function customDrillFromPayload(requirement: string, payload: unknown, pl
 }
 
 export function buildCustomDrillMessages(requirement: string, playerColor: Color): ChatMessage[] {
-  const side = playerColor === 'w' ? '白方（用户）' : '黑方（用户）';
-  const opp = playerColor === 'w' ? '黑方（对手）' : '白方（对手）';
+  const locale = liveLocale();
+  const side = locale === 'en' ? `${sideName(playerColor, locale)} (user)` : `${sideName(playerColor, locale)}（用户）`;
+  const oppColor = playerColor === 'w' ? 'b' : 'w';
+  const opp = locale === 'en' ? `${sideName(oppColor, locale)} (opponent)` : `${sideName(oppColor, locale)}（对手）`;
+  if (locale === 'en') {
+    return [
+      {
+        role: 'system',
+        content: `You are an opening coach. From the student’s written request, build an opponent opening book. Output one JSON object only, no Markdown headings.
+JSON fields:
+- title: short title in English
+- summary: one sentence in English
+- keyIdeas: 3–5 English bullets
+- opponentBook: array of SAN arrays, each from the start position, 8–16 plies
+Rules:
+1. Moves must be legal, standard SAN (e4, Nf3, O-O, exd5).
+2. The opponent is ${opp}; the student is ${side}. The opponent should play the requested opening or variation; give typical replies on the student’s side so the book still covers after a colour swap.
+3. First line is the main line; add 2–5 common branches (different student replies).
+4. No text outside the JSON.`,
+      },
+      {
+        role: 'user',
+        content: `Student request: ${requirement.trim()}
+Generate opponentBook.`,
+      },
+    ];
+  }
   return [
     {
       role: 'system',
@@ -127,7 +159,7 @@ export async function generateCustomDrill(
   signal?: AbortSignal,
 ): Promise<OpeningDrill> {
   const text = requirement.trim();
-  if (!text) throw new Error('请先填写对手应走的开局或变例');
+  if (!text) throw new Error(tl('error.customNeedReq'));
   let acc = '';
   for await (const d of llm.stream(buildCustomDrillMessages(text, playerColor), {
     temperature: 0.3,
@@ -137,6 +169,6 @@ export async function generateCustomDrill(
   })) {
     acc += d;
   }
-  if (!acc.trim()) throw new Error('模型没有返回开局书');
+  if (!acc.trim()) throw new Error(tl('error.customEmpty'));
   return customDrillFromPayload(text, extractJsonObject(acc), playerColor);
 }

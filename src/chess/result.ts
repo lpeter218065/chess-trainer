@@ -1,5 +1,6 @@
 import type { Lesson } from '../lessons/schema';
 import type { Quality } from './quality';
+import { tl } from '../i18n';
 
 export type Outcome = 'success' | 'fail';
 export type GameResult = 'playerWin' | 'playerLoss' | 'draw' | null;
@@ -23,26 +24,26 @@ export function judgeResult(p: JudgeParams): { outcome: Outcome; reason: string 
   const { lesson, finalEvalCp, gameResult } = p;
   switch (lesson.target) {
     case 'win':
-      if (gameResult === 'playerWin') return { outcome: 'success', reason: '完成杀王，达成目标。' };
-      if (gameResult === 'playerLoss' || gameResult === 'draw') return { outcome: 'fail', reason: '没有赢下这个必胜局面。' };
+      if (gameResult === 'playerWin') return { outcome: 'success', reason: tl('result.winMate') };
+      if (gameResult === 'playerLoss' || gameResult === 'draw') return { outcome: 'fail', reason: tl('result.winMissed') };
       return finalEvalCp >= 500
-        ? { outcome: 'success', reason: '结束时已形成决定性优势。' }
-        : { outcome: 'fail', reason: '结束时优势不足以取胜。' };
+        ? { outcome: 'success', reason: tl('result.winEval') }
+        : { outcome: 'fail', reason: tl('result.winShort') };
     case 'draw':
-      if (gameResult === 'draw') return { outcome: 'success', reason: '成功守和。' };
-      if (gameResult === 'playerLoss') return { outcome: 'fail', reason: '防守失败，被杀王。' };
-      if (gameResult === 'playerWin') return { outcome: 'success', reason: '对方失误，反而赢了。' };
+      if (gameResult === 'draw') return { outcome: 'success', reason: tl('result.drawOk') };
+      if (gameResult === 'playerLoss') return { outcome: 'fail', reason: tl('result.drawMated') };
+      if (gameResult === 'playerWin') return { outcome: 'success', reason: tl('result.drawWon') };
       return Math.abs(finalEvalCp) <= 50
-        ? { outcome: 'success', reason: '局面保持均势，守和成功。' }
-        : { outcome: 'fail', reason: '防守出现漏洞，局面已经失守。' };
+        ? { outcome: 'success', reason: tl('result.drawEqual') }
+        : { outcome: 'fail', reason: tl('result.drawBroke') };
     case 'hold': {
       const floor = lesson.evalFloor ?? -100;
-      if (gameResult === 'playerLoss') return { outcome: 'fail', reason: '被杀王。' };
+      if (gameResult === 'playerLoss') return { outcome: 'fail', reason: tl('result.holdMated') };
       const dropped = p.evalHistory.some((e) => e < floor);
       const blundered = p.qualities.includes('blunder');
-      if (dropped) return { outcome: 'fail', reason: '过程中评估掉到阈值以下。' };
-      if (blundered) return { outcome: 'fail', reason: '出现了严重失误。' };
-      return { outcome: 'success', reason: '全程保持了可接受的局面，没有严重失误。' };
+      if (dropped) return { outcome: 'fail', reason: tl('result.holdEval') };
+      if (blundered) return { outcome: 'fail', reason: tl('result.holdBlunder') };
+      return { outcome: 'success', reason: tl('result.holdOk') };
     }
   }
 }

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, type ReactNode } from 'react';
 import type { Quality } from '../chess/quality';
-import { QUALITY_LABEL } from '../chess/quality';
+import { useT } from '../i18n';
+import type { ChromeKey } from '../i18n';
 import type { MoveNodeId, MoveTree } from '../chess/moveTree';
 import { sideToMove } from '../chess/notation';
 
@@ -23,6 +24,7 @@ function MoveListImpl({
   onSelectPly: (ply: number) => void;
   qualities?: (Quality | null)[];
 }) {
+  const t = useT();
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const list = listRef.current;
@@ -65,7 +67,7 @@ function MoveListImpl({
         onClick={() => onSelectPly(move.ply)}
       >
         {move.san}
-        {q && <span className={`ml-1 text-[10px] ${QUALITY_CLASS[q]}`}>{QUALITY_LABEL[q]}</span>}
+        {q && <span className={`ml-1 text-[10px] ${QUALITY_CLASS[q]}`}>{t(`quality.${q}` as ChromeKey)}</span>}
       </button>
     );
   };
@@ -123,6 +125,7 @@ function MoveButton({
   selectedId: MoveNodeId | null;
   onSelect: (id: MoveNodeId) => void;
 }) {
+  const t = useT();
   const node = tree.nodes[id];
   const q = node.quality;
   return (
@@ -132,7 +135,7 @@ function MoveButton({
       onClick={() => onSelect(id)}
     >
       {node.san}
-      {q && <span className={`ml-0.5 text-[10px] ${QUALITY_CLASS[q]}`}>{QUALITY_LABEL[q]}</span>}
+      {q && <span className={`ml-0.5 text-[10px] ${QUALITY_CLASS[q]}`}>{t(`quality.${q}` as ChromeKey)}</span>}
     </button>
   );
 }
@@ -251,8 +254,9 @@ function VariationMoveListImpl({
   selectedNodeId: MoveNodeId | null;
   onSelectNode: (id: MoveNodeId) => void;
 }) {
+  const t = useT();
   if (tree.rootChildren.length === 0) {
-    return <p className="text-sm text-muted">尚无着法</p>;
+    return <p className="text-sm text-muted">{t('board.noMoves')}</p>;
   }
   return (
     <div className="flex flex-wrap items-baseline gap-y-1 font-mono text-sm leading-relaxed">

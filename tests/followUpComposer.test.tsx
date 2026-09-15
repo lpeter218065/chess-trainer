@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { FollowUpChat, FollowUpComposer } from '../src/components/FollowUpChat';
+import type { SpeechListener, SpeechPort } from '../src/speech/recognition';
 
 type KeyOptions = {
   isComposing?: boolean;
@@ -83,6 +84,12 @@ describe('FollowUpComposer interaction', () => {
     expect(screen.getByRole('button', { name: '对方的计划是什么？' })).toBeTruthy();
   });
 
+  it('keeps campaign chips visible on a phone without focusing', () => {
+    setWindowSize(390, 844);
+    render(<FollowUpComposer onAsk={vi.fn()} alwaysShowChips />);
+    expect(screen.getByRole('button', { name: '对方的计划是什么？' })).toBeTruthy();
+  });
+
   it('sends a compact chip while the input stays focused', () => {
     setWindowSize(390, 844);
     const onAsk = vi.fn();
@@ -94,6 +101,53 @@ describe('FollowUpComposer interaction', () => {
     fireEvent.click(chip);
     expect(onAsk).toHaveBeenCalledTimes(1);
     expect(onAsk).toHaveBeenCalledWith('对方的计划是什么？');
+  });
+
+  it('hides the mic when speech is unavailable', async () => {
+    render(
+      <FollowUpComposer
+        onAsk={vi.fn()}
+        speechPort={{
+          available: async () => false,
+          start: async () => {},
+          stop: async () => {},
+        }}
+      />,
+    );
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: '语音输入' })).toBeNull();
+  });
+
+  it('fills the draft from voice and does not auto-send', async () => {
+    let listener: SpeechListener | null = null;
+    const port: SpeechPort = {
+      available: async () => true,
+      start: async (next) => {
+        listener = next;
+      },
+      stop: async () => {
+        listener?.onEnd?.();
+      },
+    };
+    const onAsk = vi.fn();
+    render(<FollowUpComposer onAsk={onAsk} speechPort={port} />);
+    const mic = await screen.findByRole('button', { name: '语音输入' });
+    await act(async () => {
+      fireEvent.click(mic);
+    });
+    expect(screen.getByRole('button', { name: '停止录音' })).toBeTruthy();
+    await act(async () => {
+      listener?.onPartial?.('为什么走 c5');
+    });
+    const input = screen.getByPlaceholderText('正在听…') as HTMLInputElement;
+    expect(input.value).toBe('为什么走 c5');
+    expect(onAsk).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '停止录音' }));
+    });
+    expect(screen.getByRole('button', { name: '语音输入' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+    expect(onAsk).toHaveBeenCalledWith('为什么走 c5');
   });
 });
 

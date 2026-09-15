@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { probeLlmConnection, LlmError } from '../src/llm/client';
+import { useSettings } from '../src/store/settings';
 
 const cfg = { baseUrl: 'https://api.example.com/v1/', apiKey: 'sk-test', model: 'gpt-x' };
 
@@ -27,6 +28,15 @@ describe('probeLlmConnection', () => {
       throw new TypeError('Failed to fetch');
     };
     await expect(probeLlmConnection(cfg, fetchImpl)).rejects.toThrow(/不允许从 App 内直连/);
+  });
+
+  it('English locale uses English CORS copy', async () => {
+    useSettings.getState().setLocalePref('en');
+    const fetchImpl: typeof fetch = async () => {
+      throw new TypeError('Failed to fetch');
+    };
+    await expect(probeLlmConnection(cfg, fetchImpl)).rejects.toThrow(/does not allow connections from the app/);
+    useSettings.getState().setLocalePref('system');
   });
 
   it('/models 404 时回退到最小对话，对话成功即成功', async () => {

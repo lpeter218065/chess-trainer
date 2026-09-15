@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect } from 'vitest';
 import {
   buildIntroMessages, buildMoveMessages, buildHintMessages, buildSummaryMessages, buildExploreMessages,
   buildFollowUpMessages, buildAssessmentMessages, FOLLOW_UP_CHIPS, exploreFollowUpThreadId, lessonFollowUpThreadId,
 } from '../src/llm/prompts';
 import { LESSONS } from '../src/lessons';
 import { principleById } from '../src/lessons/principles';
+import { useSettings } from '../src/store/settings';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -160,3 +161,68 @@ describe('prompts', () => {
     expect(m[8].content).toBe('q');
   });
 });
+
+describe('english prompts', () => {
+  afterEach(() => {
+    useSettings.getState().setLocalePref('system');
+  });
+
+  it('system and user templates follow the English locale', () => {
+    useSettings.getState().setLocalePref('en');
+    const m = buildIntroMessages(lesson, principles);
+    expect(m[0].content).toContain('Explain in clear English');
+    expect(m[0].content).not.toContain('用简体中文');
+    expect(m[1].content).toContain('Lesson:');
+    expect(m[1].content).toContain('hover-highlight');
+    expect(m[1].content).not.toContain('课程：');
+    expect(m[1].content).not.toContain('悬停高亮');
+  });
+
+  it('move, hint, summary, explore, follow-up and assessment prompts are English', () => {
+    useSettings.getState().setLocalePref('en');
+    const move = buildMoveMessages({
+      lesson, fen: lesson.startFen, moveHistorySan: ['d3', 'd6'], userMoveSan: 'd3', quality: 'inaccuracy',
+      evalBefore: 30, evalAfter: -20, bestLinesSan: [['O-O', 'O-O', 'Re1'], ['d4', 'exd4']], engineReplySan: 'd6',
+      angle: 'compare', principles: [principleById('center-control')], recentCommentary: ['Last round covered development.'],
+    });
+    expect(move[1].content).toContain('Inaccuracy');
+    expect(move[1].content).toContain('Compare to best');
+    expect(move[1].content).not.toContain('不精确');
+
+    const hint = buildHintMessages({ lesson, fen: lesson.startFen, moveHistorySan: [], bestLinesSan: [['d3']], principles });
+    expect(hint[1].content).toContain('Do not name a concrete move');
+    expect(hint[1].content).not.toContain('不要说出具体着法');
+
+    const summary = buildSummaryMessages({
+      lesson, moveHistorySan: ['d3', 'd6'], qualities: ['good', 'best'], evalHistory: [20, 35],
+      outcome: 'success', reason: 'held', principles, hintUsed: false,
+    });
+    expect(summary[1].content).toContain('Success');
+    expect(summary[1].content).toContain('Best');
+    expect(summary[1].content).not.toContain('成功');
+
+    const explore = buildExploreMessages({
+      fen: START, moveHistorySan: ['e4', 'e5', 'Nf3'], moveQualities: ['good', 'good', 'inaccuracy'],
+      evalCp: 25, sideToMove: 'b', bestLinesSan: [['Nc6', 'Bc4'], ['Bb5']], focusPly: 3,
+    });
+    expect(explore[1].content).toContain('Black to move');
+    expect(explore[1].content).toContain('Last move: White played Nf3 (quality: Inaccuracy)');
+    expect(explore[1].content).not.toContain('当前轮到：黑方走棋');
+
+    const follow = buildFollowUpMessages({
+      fen: START, moveHistorySan: ['e4'], evalCp: 30, sideToMove: 'w', bestLinesSan: [['Nf3']],
+      primaryCommentary: 'Primary note', turns: [], question: 'What is the plan?',
+    });
+    expect(follow[0].content).toMatch(/follow-up in English/i);
+    expect(follow[1].content).toContain('Primary commentary:');
+    expect(follow[1].content).not.toContain('主讲解');
+
+    const assess = buildAssessmentMessages({
+      fen: START, moveHistorySan: ['e4', 'e5'], evalCp: 30, sideToMove: 'w', perspective: 'b', bestLinesSan: [['Nf6']],
+    });
+    expect(assess[1].content).toContain('from **Black**');
+    expect(assess[1].content).toContain('White to move');
+    expect(assess[1].content).not.toContain('请从**黑方**');
+  });
+});
+

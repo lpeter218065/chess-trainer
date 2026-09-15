@@ -20,6 +20,7 @@
 		"KeyboardPlugin",
 		"PreferencesPlugin",
 		"StatusBarPlugin",
-		"NativeSsePlugin"
+		"NativeSsePlugin",
+		"SpeechRecognitionPlugin"
 	]
 }

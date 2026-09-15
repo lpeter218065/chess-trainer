@@ -4,21 +4,21 @@ import { uciToSquares } from './notation';
 import type { CommentaryFocus } from './commentaryMarkers';
 
 export const ARROW_COLORS = {
-  best: '#16a34a',
-  candidate: '#3b82f6',
-  candidate2: '#8b5cf6',
-  user: '#f97316',
-  attack: '#ef4444',
+  best: '#15803d',
+  candidate: '#2563eb',
+  candidate2: '#7c3aed',
+  user: '#ea580c',
+  attack: '#dc2626',
   hint: '#2563eb',
 } as const;
 
 export const SQUARE_COLORS = {
-  bestFrom: 'rgba(34, 197, 94, 0.35)',
-  bestTo: 'rgba(34, 197, 94, 0.55)',
-  candidateTo: 'rgba(59, 130, 246, 0.4)',
-  userFrom: 'rgba(249, 115, 22, 0.45)',
-  userTo: 'rgba(249, 115, 22, 0.6)',
-  focus: 'rgba(139, 92, 246, 0.38)',
+  bestFrom: 'rgba(21, 128, 61, 0.35)',
+  bestTo: 'rgba(21, 128, 61, 0.55)',
+  candidateTo: 'rgba(37, 99, 235, 0.40)',
+  userFrom: 'rgba(234, 88, 12, 0.45)',
+  userTo: 'rgba(234, 88, 12, 0.60)',
+  focus: 'rgba(182, 126, 42, 0.44)',
 } as const;
 
 export interface BoardArrow {

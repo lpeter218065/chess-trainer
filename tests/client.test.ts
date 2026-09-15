@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { streamChat, LlmError, normalizeLlmBaseUrl, chatCompletionsUrl, lowerEffort, formatLlmHttpError } from '../src/llm/client';
+import { useSettings } from '../src/store/settings';
 
 function sseResponse(chunks: string[], status = 200): Response {
   const enc = new TextEncoder();
@@ -105,6 +106,14 @@ describe('formatLlmHttpError 友好化', () => {
   });
   it('非 JSON body 不抛异常且不回显花括号', () => {
     expect(() => formatLlmHttpError(500, 'oops <html>', cfg)).not.toThrow();
+  });
+
+  it('English locale uses English HTTP error copy', () => {
+    useSettings.getState().setLocalePref('en');
+    const s = formatLlmHttpError(400, '{"error":{"message":"Internal server error"}}', cfg);
+    expect(s).toMatch(/server error/i);
+    expect(s).not.toMatch(/服务端/);
+    useSettings.getState().setLocalePref('system');
   });
 });
 

@@ -2,6 +2,7 @@ import { Chess } from 'chess.js';
 import type { Color, Lesson } from './schema';
 import type { DrillStartMode, OpeningDrill } from './openingDrills';
 import { START_FEN } from '../chess/pgn';
+import { tl } from '../i18n';
 
 // 纯字符串解析，住在无 chess.js 依赖的 openingDrills 里；此处再导出以兼容既有引用
 export { parseDrillLessonId } from './openingDrills';
@@ -35,7 +36,7 @@ export function drillToLesson(drill: OpeningDrill, color: Color, startMode: Dril
   return {
     id: `drill/${drill.id}/${color}/${modeTag}`,
     section: 'opening',
-    title: `${drill.title} · 开局练习`,
+    title: `${drill.title} · ${tl('home.drills')}`,
     summary: drill.summary,
     startFen,
     playerColor: color,

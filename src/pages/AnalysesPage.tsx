@@ -9,6 +9,7 @@ import {
 } from '../store/gameSessions';
 import { parseDrillLessonId } from '../lessons/openingDrills';
 import { NavBack } from '../components/layout/NavBack';
+import { useT } from '../i18n';
 
 type KindFilter = 'all' | SessionKind;
 
@@ -33,6 +34,7 @@ function SwipeRow({
   label: string;
   children: ReactNode;
 }) {
+  const t = useT();
   const startX = useRef<number | null>(null);
   const dxRef = useRef(0);
   const [dx, setDx] = useState(0);
@@ -70,10 +72,10 @@ function SwipeRow({
         type="button"
         className="swipe-row-delete"
         tabIndex={open ? 0 : -1}
-        aria-label={`删除 ${label}`}
+        aria-label={t('analyses.deleteAria', { label })}
         onClick={onDelete}
       >
-        删除
+        {t('session.delete')}
       </button>
       <div
         className="swipe-row-content"
@@ -96,6 +98,7 @@ function SwipeRow({
 }
 
 export function AnalysesPage() {
+  const t = useT();
   const metasMap = useGameSessions((s) => s.metas);
   const currentId = useGameSessions(resolveCurrentSessionId);
   const deleteSession = useGameSessions((s) => s.deleteSession);
@@ -154,7 +157,7 @@ export function AnalysesPage() {
   };
 
   const confirmDelete = (m: SessionMeta) => {
-    if (!window.confirm(`删除「${m.title}」？此操作不可恢复。`)) return;
+    if (!window.confirm(t('analyses.deleteConfirm', { title: m.title }))) return;
     deleteSession(m.id);
     setMenuId(null);
   };
@@ -168,117 +171,173 @@ export function AnalysesPage() {
     <button
       key={id}
       type="button"
-      className={`btn text-sm ${kind === id ? 'btn-primary' : 'text-muted'}`}
-      aria-pressed={kind === id}
+      role="tab"
+      aria-selected={kind === id}
+      className={`analyses-filter-btn ${kind === id ? 'is-active' : ''}`}
       onClick={() => setKind(id)}
     >
       {label}
     </button>
   );
 
+  const hasAnySessions = Object.keys(metasMap).length > 0;
+
   return (
     <div className="page-shell mx-auto flex min-h-dvh max-w-3xl flex-col">
       <header className="mb-6">
-        <NavBack to="/">首页</NavBack>
-        <h1 className="page-title mt-1 text-2xl">我的分析</h1>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button type="button" className="btn btn-primary text-sm" onClick={startNew}>
-            新建探索
-          </button>
-          <Link to="/explore" state={{ from: 'analyses' }} className="btn text-sm">自由探索</Link>
+        <NavBack to="/">{t('nav.home')}</NavBack>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          <h1 className="page-title text-2xl">{t('analyses.title')}</h1>
+          {hasAnySessions && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="btn btn-primary text-sm" onClick={startNew}>
+                {t('analyses.newExplore')}
+              </button>
+              <Link to="/explore" state={{ from: 'analyses' }} className="btn text-sm">
+                {t('home.explore')}
+              </Link>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <label htmlFor="analyses-q" className="sr-only">搜索标题</label>
-        <input
-          id="analyses-q"
-          className="field min-w-0 flex-1"
-          placeholder="搜索标题…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <div className="flex shrink-0 gap-1.5">
-          {filterBtn('all', '全部')}
-          {filterBtn('explore', '探索')}
-          {filterBtn('lesson', '课程')}
-        </div>
-      </div>
-
-      <p className="mb-2 text-xs text-muted">
-        共 {items.length} 条{query.trim() || kind !== 'all' ? '（已筛选）' : ''}
-      </p>
-
-      {items.length === 0 ? (
-        <div className="flex w-full min-w-0 flex-col items-center rounded-xl border border-dashed border-line px-4 py-10 text-center">
-          {Object.keys(metasMap).length === 0 ? (
-            <>
-              <p className="w-full text-sm text-muted">还没有保存的分析。从起始局面开一局即可。</p>
-              <div className="mt-4 flex w-full justify-center">
-                <button type="button" className="btn btn-primary" onClick={startNew}>新建探索</button>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-muted">没有匹配的结果，试试改搜索词或筛选。</p>
-          )}
+      {!hasAnySessions ? (
+        <div className="flex w-full min-w-0 flex-col items-center justify-center rounded-2xl border border-dashed border-line/80 bg-ivory/60 px-6 py-16 text-center shadow-xs">
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cream text-walnut shadow-xs">
+            <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="3" />
+              <path d="M3 9h18M9 21V9M15 21V9" />
+            </svg>
+          </div>
+          <p className="max-w-sm text-pretty text-sm leading-relaxed text-muted">
+            {t('analyses.empty')}
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <button type="button" className="btn btn-primary" onClick={startNew}>
+              {t('analyses.newExplore')}
+            </button>
+            <Link to="/" className="btn">
+              {t('nav.home')}
+            </Link>
+          </div>
         </div>
       ) : (
-        <ul className="panel overflow-hidden">
-          {items.map((m) => {
-            const active = m.id === currentId;
-            const summary = m.summary ?? (m.kind === 'explore' ? '空分析' : '课程练习');
-            return (
-              <li key={m.id} className={`relative border-b border-line last:border-b-0 ${active ? 'bg-cream' : ''}`}>
-                <SwipeRow label={m.title} onDelete={() => confirmDelete(m)}>
-                  <div className="flex items-stretch">
-                    <button type="button" className="min-w-0 flex-1 px-4 py-3 text-left hover:opacity-90" onClick={() => openSession(m)}>
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`badge shrink-0 ${
-                            m.kind === 'explore' ? 'badge-walnut' : 'badge-brass'
-                          }`}
+        <>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <label htmlFor="analyses-q" className="sr-only">{t('analyses.search')}</label>
+              <input
+                id="analyses-q"
+                className="field min-w-0 pr-8"
+                placeholder={t('analyses.searchPlaceholder')}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              {query && (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink px-1 text-base leading-none"
+                  aria-label="Clear search"
+                  onClick={() => setQuery('')}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            <div className="analyses-filter-group shrink-0 self-start sm:self-auto" role="tablist" aria-label={t('analyses.title')}>
+              {filterBtn('all', t('analyses.all'))}
+              {filterBtn('explore', t('analyses.explore'))}
+              {filterBtn('lesson', t('analyses.lesson'))}
+            </div>
+          </div>
+
+          <p className="mb-3 text-xs text-muted">
+            {t('analyses.count', { n: items.length })}{query.trim() || kind !== 'all' ? t('analyses.filtered') : ''}
+          </p>
+
+          {items.length === 0 ? (
+            <div className="flex w-full min-w-0 flex-col items-center justify-center rounded-2xl border border-dashed border-line px-4 py-12 text-center">
+              <p className="max-w-sm text-pretty text-sm leading-relaxed text-muted">{t('analyses.noMatch')}</p>
+              <button
+                type="button"
+                className="btn btn-sm mt-4 text-xs"
+                onClick={() => { setQuery(''); setKind('all'); }}
+              >
+                {t('analyses.all')}
+              </button>
+            </div>
+          ) : (
+            <ul className="rounded-2xl border border-line bg-ivory shadow-xs">
+              {items.map((m) => {
+                const active = m.id === currentId;
+                const summary = m.summary ?? (m.kind === 'explore' ? t('analyses.emptyExplore') : t('analyses.lessonPractice'));
+                return (
+                  <li
+                    key={m.id}
+                    className={`relative border-b border-line first:rounded-t-2xl last:border-b-0 last:rounded-b-2xl overflow-hidden ${
+                      active ? 'bg-cream' : ''
+                    }`}
+                  >
+                    <SwipeRow label={m.title} onDelete={() => confirmDelete(m)}>
+                      <div className="flex items-stretch">
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 px-4 py-3 text-left transition hover:opacity-90"
+                          onClick={() => openSession(m)}
                         >
-                          {m.kind === 'explore' ? '探索' : '课程'}
-                        </span>
-                        <span className="truncate font-medium text-ink">{m.title}</span>
-                        {active && <span className="shrink-0 text-[11px] text-walnut">当前</span>}
-                      </div>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {summary}
-                        <span className="mx-1.5 text-line">·</span>
-                        {formatSessionTime(m.updatedAt)}
-                      </p>
-                    </button>
-                    <div className="relative flex shrink-0 items-center pr-1" ref={menuId === m.id ? menuRef : undefined}>
-                      <button
-                        type="button"
-                        className="btn btn-ghost min-h-11 min-w-11 px-0 text-muted"
-                        aria-label={`更多操作 ${m.title}`}
-                        aria-haspopup="menu"
-                        aria-expanded={menuId === m.id}
-                        onClick={() => setMenuId((cur) => (cur === m.id ? null : m.id))}
-                      >
-                        <IconMore />
-                      </button>
-                      {menuId === m.id && (
-                        <div className="menu absolute right-1 top-full z-20 mt-1 w-32 py-1" role="menu">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`badge shrink-0 ${
+                                m.kind === 'explore' ? 'badge-walnut' : 'badge-brass'
+                              }`}
+                            >
+                              {m.kind === 'explore' ? t('analyses.explore') : t('analyses.lesson')}
+                            </span>
+                            <span className="truncate font-medium text-ink">{m.title}</span>
+                            {active && <span className="shrink-0 text-[11px] font-medium text-walnut">{t('session.current')}</span>}
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted">
+                            {summary}
+                            <span className="mx-1.5 text-line">·</span>
+                            {formatSessionTime(m.updatedAt)}
+                          </p>
+                        </button>
+                        <div className="flex shrink-0 items-center pr-1">
                           <button
                             type="button"
-                            role="menuitem"
-                            className="flex min-h-11 w-full items-center px-3 text-left text-sm text-danger"
-                            onClick={() => confirmDelete(m)}
+                            className="btn btn-ghost min-h-11 min-w-11 px-0 text-muted"
+                            aria-label={t('analyses.more', { title: m.title })}
+                            aria-haspopup="menu"
+                            aria-expanded={menuId === m.id}
+                            onClick={() => setMenuId((cur) => (cur === m.id ? null : m.id))}
                           >
-                            删除
+                            <IconMore />
                           </button>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                </SwipeRow>
-              </li>
-            );
-          })}
-        </ul>
+                      </div>
+                    </SwipeRow>
+                    {menuId === m.id && (
+                      <div
+                        ref={menuRef}
+                        className="menu absolute right-2 top-11 z-30 w-32 py-1 shadow-lg"
+                        role="menu"
+                      >
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="flex min-h-11 w-full items-center px-3 text-left text-sm text-danger hover:bg-danger/10 transition-colors"
+                          onClick={() => confirmDelete(m)}
+                        >
+                          {t('session.delete')}
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );

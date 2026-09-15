@@ -19,6 +19,7 @@ import { annotationsAfterMove, type BoardAnnotations } from '../chess/annotation
 import { isFinished, judgeResult, type GameResult, type Outcome } from '../chess/result';
 import { extractFeatures } from '../chess/features';
 import { pickBookReply } from '../chess/openingBook';
+import { tl } from '../i18n';
 
 export interface LlmStreamOptions {
   temperature: number;
@@ -192,7 +193,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
           }
           if (!ac.signal.aborted) flusher.finish();
         } catch (e) {
-          if (!ac.signal.aborted) set({ llmError: `讲解失败：${(e as Error).message}` });
+          if (!ac.signal.aborted) set({ llmError: tl('error.commentary', { msg: (e as Error).message }) });
         } finally {
           flusher.cancel();
           if (streamAbort === ac) { streamAbort = null; set({ streaming: null }); }
@@ -217,7 +218,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
         set({ analysisBefore: analysis, evalCp: playerCp(analysis, lesson), engineError: null, phase: playerToMove ? 'userTurn' : get().phase });
       } catch (e) {
         if (get().fen !== fen) return;
-        set({ engineError: `引擎分析失败：${(e as Error).message}`, phase: playerToMove ? 'userTurn' : get().phase });
+        set({ engineError: tl('error.engineAnalyze', { msg: (e as Error).message }), phase: playerToMove ? 'userTurn' : get().phase });
       }
     };
 
@@ -249,7 +250,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
           set({ fen: chess.fen(), history: [...history] });
         }
       } catch (e) {
-        set({ engineError: `引擎出错：${(e as Error).message}`, phase: 'userTurn' });
+        set({ engineError: tl('error.engine', { msg: (e as Error).message }), phase: 'userTurn' });
         return;
       }
       if (chess.isGameOver()) {
@@ -355,7 +356,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
             evalAfter = evalAfterCp;
             engineMove = { san: em.san, uci: em.from + em.to + (em.promotion ?? '') };
           } catch (e) {
-            set({ engineError: `引擎出错：${(e as Error).message}`, phase: 'userTurn', liveAnnotations: null });
+            set({ engineError: tl('error.engine', { msg: (e as Error).message }), phase: 'userTurn', liveAnnotations: null });
             return false;
           }
         } else {
@@ -586,7 +587,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
               set({
                 followUpStreaming: false,
                 followUpDraft: '',
-                followUpError: `追问失败：${(e as Error).message}`,
+                followUpError: tl('error.followUp', { msg: (e as Error).message }),
                 followUpThreadId: null,
               });
             }
@@ -614,13 +615,13 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
               analysis = await deps.engine.analyze(fen, 3);
               if (get().assessmentFen !== fen) return;
             } catch (e) {
-              set({ llmError: `局面判断失败：${(e as Error).message}` });
+              set({ llmError: tl('error.assessment', { msg: (e as Error).message }) });
               return;
             }
           }
           const top = analysis.lines.find((l) => l.multipv === 1) ?? analysis.lines[0];
           if (!top) {
-            set({ llmError: '局面判断失败：引擎没有给出线路' });
+            set({ llmError: tl('error.assessmentNoLines') });
             return;
           }
           const stm = sideToMove(fen);

@@ -8,9 +8,16 @@ export function AppMark({ size = 28 }: { size?: number }) {
       aria-hidden="true"
       className="app-mark shrink-0"
     >
-      <rect width="32" height="32" rx="6" fill="var(--color-walnut)" />
-      <rect x="3" y="3" width="13" height="13" fill="var(--color-ivory)" />
-      <rect x="16" y="16" width="13" height="13" fill="var(--color-ivory)" />
+      <defs>
+        <clipPath id="app-mark-clip">
+          <rect width="32" height="32" rx="6.5" />
+        </clipPath>
+      </defs>
+      <g clipPath="url(#app-mark-clip)">
+        <rect width="32" height="32" fill="var(--color-walnut)" />
+        <rect x="3" y="3" width="13" height="13" fill="var(--color-ivory)" />
+        <rect x="16" y="16" width="13" height="13" fill="var(--color-ivory)" />
+      </g>
     </svg>
   );
 }

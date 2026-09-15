@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import type { ViewportClass } from '../../platform';
 import { useTrainerViewport } from '../../platform/trainerViewport';
+import { useT } from '../../i18n';
 
 const LEFT_TAB = '__left';
 const STORAGE_PREFIX = 'trainer-segment:';
@@ -60,8 +61,9 @@ function Segmented({
   onSelect: (id: string) => void;
   id: string;
 }) {
+  const t = useT();
   return (
-    <div className="trainer-tabs" role="tablist" aria-label="训练面板">
+    <div className="trainer-tabs" role="tablist" aria-label={t('trainer.tabs')}>
       {tabs.map((t) => {
         const selected = t.id === active;
         return (
@@ -164,12 +166,13 @@ export function TrainerLayout({
     prevDetailDefault.current = detailDefault;
   }, [detailDefault]);
 
+  const t = useT();
   const tabs = useMemo((): TrainerPanel[] => {
     if (mode !== 'wide' && hasLeft) {
-      return [{ id: LEFT_TAB, label: '候选', content: leftPanel }, ...panels];
+      return [{ id: LEFT_TAB, label: t('trainer.candidates'), content: leftPanel }, ...panels];
     }
     return panels;
-  }, [mode, hasLeft, leftPanel, panels]);
+  }, [mode, hasLeft, leftPanel, panels, t]);
 
   const validIds = useMemo(() => tabs.map((t) => t.id), [tabs]);
   const validKey = validIds.join(',');
@@ -254,10 +257,10 @@ export function TrainerLayout({
 
   const shell: CSSProperties = {
     '--board-row-max': `${width + 64}px`,
-    paddingTop: keyboardOpen ? '0.35rem' : 'max(0.5rem, env(safe-area-inset-top))',
-    paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
-    paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
-    paddingBottom: keyboardOpen ? '0.25rem' : 'max(0.5rem, env(safe-area-inset-bottom))',
+    paddingTop: keyboardOpen ? '0.35rem' : 'max(0.5rem, calc(env(safe-area-inset-top) + 0.35rem))',
+    paddingLeft: 'max(0.75rem, calc(env(safe-area-inset-left) + 0.25rem))',
+    paddingRight: 'max(0.75rem, calc(env(safe-area-inset-right) + 0.25rem))',
+    paddingBottom: keyboardOpen ? '0.25rem' : 'max(0.5rem, calc(env(safe-area-inset-bottom) + 0.35rem))',
     ...(keyboardOpen ? { position: 'fixed', top: offsetTop, left: 0, right: 0, height, maxHeight: height, minHeight: 0 } : {}),
   } as CSSProperties;
 
@@ -289,7 +292,7 @@ export function TrainerLayout({
             <button
               type="button"
               className="detail-handle"
-              aria-label={detailCollapsed ? '展开讲解区' : '折叠讲解区'}
+              aria-label={detailCollapsed ? t('trainer.expandNotes') : t('trainer.collapseNotes')}
               onPointerDown={onHandlePointerDown}
               onPointerMove={onHandlePointerMove}
               onPointerUp={onHandlePointerUp}

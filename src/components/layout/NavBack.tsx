@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useT } from '../../i18n';
 
 function Chevron() {
   return (
@@ -19,19 +20,21 @@ function Chevron() {
 export function NavBack({
   to,
   onClick,
-  children = '课程',
+  children,
 }: {
   to?: string;
   onClick?: () => void;
   children?: ReactNode;
 }) {
+  const t = useT();
+  const text = children ?? t('nav.lesson');
   const inner = (
     <>
       <Chevron />
-      <span className="nav-back-label">{children}</span>
+      <span className="nav-back-label">{text}</span>
     </>
   );
-  const label = typeof children === 'string' ? `返回${children}` : '返回';
+  const label = typeof text === 'string' ? t('nav.back', { label: text }) : t('nav.backBare');
   if (to) {
     return (
       <Link to={to} className="nav-back" aria-label={label}>

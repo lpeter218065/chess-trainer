@@ -3,6 +3,7 @@ import { MiniBoard } from './MiniBoard';
 import { fenAfterUciPlies } from '../chess/notation';
 import { useTrainerViewport } from '../platform/trainerViewport';
 import { trainerLayoutMode } from './layout/TrainerLayout';
+import { useT } from '../i18n';
 
 export interface PvLineData {
   label: string;
@@ -47,6 +48,7 @@ function PvLineCardImpl({
   const viewed = fenAfterUciPlies(baseFen, line.uci, step);
   const currentSan = step > 0 ? line.moves[step - 1] : null;
   const phone = !fillHeight;
+  const t = useT();
 
   return (
     <div className={`touch-row flex min-h-0 gap-3 rounded-xl border border-line bg-ivory ${phone ? 'p-3' : 'h-full gap-2 p-2'}`}>
@@ -69,16 +71,16 @@ function PvLineCardImpl({
             {line.moves.join(' ') || '—'}
           </p>
           <p className={`mt-0.5 text-muted ${phone ? 'text-xs' : 'text-[10px]'}`}>
-            {step === 0 ? '起始' : `${step}/${maxStep}${currentSan ? ` · ${currentSan}` : ''}`}
+            {step === 0 ? t('board.start') : `${step}/${maxStep}${currentSan ? ` · ${currentSan}` : ''}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-1">
           <button type="button" className="btn btn-sm" onClick={() => setPlaying((p) => !p)}>
-            {playing ? '暂停' : '播放'}
+            {playing ? t('board.pause') : t('board.play')}
           </button>
-          <button type="button" className="btn btn-sm" disabled={step <= 0} aria-label="上一步" onClick={() => { setPlaying(false); setStep((s) => Math.max(0, s - 1)); }}>←</button>
-          <button type="button" className="btn btn-sm" disabled={step >= maxStep} aria-label="下一步" onClick={() => { setPlaying(false); setStep((s) => Math.min(maxStep, s + 1)); }}>→</button>
-          <button type="button" className="btn btn-sm" onClick={() => { setPlaying(false); setStep(maxStep > 0 ? 1 : 0); }}>复位</button>
+          <button type="button" className="btn btn-sm" disabled={step <= 0} aria-label={t('trainer.prev')} onClick={() => { setPlaying(false); setStep((s) => Math.max(0, s - 1)); }}>←</button>
+          <button type="button" className="btn btn-sm" disabled={step >= maxStep} aria-label={t('trainer.next')} onClick={() => { setPlaying(false); setStep((s) => Math.min(maxStep, s + 1)); }}>→</button>
+          <button type="button" className="btn btn-sm" onClick={() => { setPlaying(false); setStep(maxStep > 0 ? 1 : 0); }}>{t('board.reset')}</button>
         </div>
       </div>
     </div>
@@ -101,12 +103,13 @@ function EngineLinesPanelImpl({
   const { width, layoutHeight } = useTrainerViewport();
   const fillHeight = trainerLayoutMode(width, layoutHeight) === 'wide';
   const shown = lines.slice(0, 3);
+  const t = useT();
 
   if (shown.length === 0) {
     if (!fillHeight) {
       return (
         <p className="px-1 py-3 text-sm leading-relaxed text-muted">
-          {analyzing ? '引擎正在算出候选着法…' : '先在棋盘走一步，这里会出现候选着法。'}
+          {analyzing ? t('board.engineLines') : t('board.engineLinesEmpty')}
         </p>
       );
     }
@@ -114,7 +117,7 @@ function EngineLinesPanelImpl({
       <div className="flex h-full min-h-0 flex-col gap-2">
         {[1, 2, 3].map((n) => (
           <div key={n} className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-line text-xs text-muted">
-            {analyzing ? `PV${n} 分析中…` : `PV${n} · 走子后会出现候选`}
+            {analyzing ? t('board.pvBusy', { n }) : t('board.pvEmpty', { n })}
           </div>
         ))}
       </div>
@@ -153,7 +156,7 @@ function EngineLinesPanelImpl({
       {shown.length < 3 &&
         Array.from({ length: 3 - shown.length }).map((_, i) => (
           <div key={`empty-${i}`} className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed border-line text-xs text-muted">
-            等待分析…
+            {t('explore.waitingAnalysis')}
           </div>
         ))}
     </div>

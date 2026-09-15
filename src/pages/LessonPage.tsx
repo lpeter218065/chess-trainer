@@ -413,11 +413,15 @@ export function LessonView({
     setReviewPly(end >= livePly ? null : end);
   }, [livePly, plyAfterRounds]);
 
+  const currentLesson = useMemo(() => {
+    if (!sessionLesson || sessionLesson.id !== expectedLessonId) return null;
+    return localizeContent(sessionLesson, locale);
+  }, [sessionLesson, expectedLessonId, locale]);
+
   // start() 在父组件 useEffect 里调用，首次渲染时 session.lesson 仍是 null
-  if (!sessionLesson || sessionLesson.id !== expectedLessonId) {
+  if (!sessionLesson || sessionLesson.id !== expectedLessonId || !currentLesson) {
     return <LoadingScreen message={t('lesson.preparing')} />;
   }
-  const currentLesson = localizeContent(sessionLesson, locale);
   const playerOrientation = currentLesson.playerColor === 'w' ? 'white' : 'black';
   const orientation = flipped
     ? (playerOrientation === 'white' ? 'black' : 'white')

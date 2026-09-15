@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
+import { memo } from 'react';
 import type { Lesson } from '../lessons/schema';
 import type { ProgressRecord } from '../store/progress';
 import { CardChevron } from './layout/CardChevron';
 import { useT } from '../i18n';
 
-export function LessonCard({ lesson, record }: { lesson: Lesson; record?: ProgressRecord }) {
+export const LessonCard = memo(function LessonCard({ lesson, record }: { lesson: Lesson; record?: ProgressRecord }) {
   const t = useT();
   const side = lesson.playerColor === 'w' ? t('home.playWhite') : t('home.playBlack');
   const status = record ? t('home.attempts', { n: record.attempts }) : t('home.notStarted');
@@ -27,4 +28,4 @@ export function LessonCard({ lesson, record }: { lesson: Lesson; record?: Progre
       <CardChevron />
     </Link>
   );
-}
+});

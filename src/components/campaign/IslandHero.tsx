@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import type { Island } from '../../campaign/types';
 import { useT } from '../../i18n';
 import { CardChevron } from '../layout/CardChevron';
@@ -20,12 +21,12 @@ export function IslandHero({
   from?: string;
 }) {
   const t = useT();
-  const stars = useCampaign((s) => s.stars);
+  const levelStars = useCampaign(useShallow((s) => island.levels.map((l) => s.stars[l.id] ?? 0)));
   const isWhite = island.id === 'queen-pawn';
   const side = isWhite ? t('home.youWhite') : t('home.youBlack');
   const blurb = stripLeadingSide(island.blurb, side);
   const total = island.levels.length;
-  const done = island.levels.filter((l) => (stars[l.id] ?? 0) > 0).length;
+  const done = levelStars.filter((n) => n > 0).length;
 
   return (
     <Link

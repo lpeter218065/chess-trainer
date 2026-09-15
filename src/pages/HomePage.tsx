@@ -26,6 +26,13 @@ export function HomePage() {
   const metas = useGameSessions((s) => s.metas);
   const islands = useMemo(() => CAMPAIGN_ISLANDS.map((island) => localizeContent(island, locale)), [locale]);
   const drills = useMemo(() => OPENING_DRILLS.map((d) => localizeContent(d, locale)), [locale]);
+  const lessonsByLocale = useMemo(() => {
+    const map = {} as Record<Section, ReturnType<typeof lessonsBySection>>;
+    for (const sec of SECTIONS) {
+      map[sec] = lessonsBySection(sec).map((l) => localizeContent(l, locale));
+    }
+    return map;
+  }, [locale]);
   const sessionCount = useMemo(() => Object.keys(metas).length, [metas]);
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     try {
@@ -45,10 +52,21 @@ export function HomePage() {
   };
   // 空闲时预热引擎 Worker/WASM，进课程页时 getEngine() 直接复用同一个单例 Promise
   useEffect(() => {
-    const warm = () => { void getEngine().catch(() => undefined); };
+    let warmed = false;
+    const warm = () => {
+      if (warmed) return;
+      warmed = true;
+      void getEngine().catch(() => undefined);
+    };
     const w = window as Window & { requestIdleCallback?: (cb: () => void) => number };
     if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(warm);
     else setTimeout(warm, 0);
+    window.addEventListener('pointerdown', warm, { passive: true, once: true });
+    window.addEventListener('touchstart', warm, { passive: true, once: true });
+    return () => {
+      window.removeEventListener('pointerdown', warm);
+      window.removeEventListener('touchstart', warm);
+    };
   }, []);
   return (
     <main className="page-shell">
@@ -105,7 +123,7 @@ export function HomePage() {
         )}
       </header>
 
-      <section className="mb-10">
+      <section className="mb-10 home-scroll-section">
         <header className="home-section-head">
           <h2>{t('home.campaign')}</h2>
           <p>{t('home.campaignBlurb')}</p>
@@ -117,7 +135,7 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="mb-10">
+      <section className="mb-10 home-scroll-section">
         <header className="home-section-head">
           <h2>{t('home.drills')}</h2>
           <p>{t('home.drillsBlurb')}</p>
@@ -148,7 +166,7 @@ export function HomePage() {
         </div>
       </section>
 
-      <div className="grid gap-8 md:grid-cols-3">
+      <div className="grid gap-8 md:grid-cols-3 home-scroll-section">
         {SECTIONS.map((sec) => (
           <section key={sec}>
             <header className="home-section-head mb-3">
@@ -157,8 +175,8 @@ export function HomePage() {
               </h2>
             </header>
             <div className="flex flex-col gap-2.5">
-              {lessonsBySection(sec).map((l) => (
-                <LessonCard key={l.id} lesson={localizeContent(l, locale)} record={records[l.id]} />
+              {lessonsByLocale[sec].map((l) => (
+                <LessonCard key={l.id} lesson={l} record={records[l.id]} />
               ))}
             </div>
           </section>

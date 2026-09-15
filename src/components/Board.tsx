@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess, type Square } from 'chess.js';
+import { useShallow } from 'zustand/react/shallow';
 import type { BoardAnnotations } from '../chess/annotations';
 import { ARROW_COLORS } from '../chess/annotations';
 import type { CommentaryFocus } from '../chess/commentaryMarkers';
@@ -34,11 +35,9 @@ function tapInputs(fen: string): {
     promotion: m.promotion,
   }));
   const ownPieceSquares = new Set<string>();
-  for (const file of 'abcdefgh') {
-    for (const rank of '12345678') {
-      const sq = `${file}${rank}` as Square;
-      const p = chess.get(sq);
-      if (p && p.color === turn) ownPieceSquares.add(sq);
+  for (const row of chess.board()) {
+    for (const p of row) {
+      if (p && p.color === turn) ownPieceSquares.add(p.square as Square);
     }
   }
   return { legalMoves, ownPieceSquares };
@@ -55,9 +54,9 @@ function BoardImpl({
   onMove,
   onBackgroundTap,
 }: BoardProps) {
-  const pieceSet = useSettings((s) => s.pieceSet);
-  const pieceColor = useSettings((s) => s.pieceColor);
-  const boardTheme = useSettings((s) => s.boardTheme);
+  const { pieceSet, pieceColor, boardTheme } = useSettings(
+    useShallow((s) => ({ pieceSet: s.pieceSet, pieceColor: s.pieceColor, boardTheme: s.boardTheme })),
+  );
   const theme = squaresForTheme(boardTheme);
   const pieces = useMemo(() => piecesForSet(pieceSet, pieceColor), [pieceSet, pieceColor]);
   const [tap, setTap] = useState<TapState>(EMPTY_TAP);

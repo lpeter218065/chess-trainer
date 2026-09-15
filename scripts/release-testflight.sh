@@ -11,7 +11,6 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 SCHEME="App"
 WORKSPACE="App.xcworkspace"
 BUILD_DIR="${BUILD_DIR:-/tmp/chess-tf}"
-ARCHIVE="$BUILD_DIR/App-b${BUILD_NUMBER:-}.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
 EXPORT_PLIST="$ROOT/scripts/ExportOptions.plist"
 
@@ -50,16 +49,21 @@ else
 fi
 
 PBX="$ROOT/ios/App/App.xcodeproj/project.pbxproj"
-BUILD_NUMBER="$(python3 - <<'PY' "$PBX"
+read_version() {
+  python3 - <<'PY' "$PBX" "$1"
 import re, sys
 text = open(sys.argv[1]).read()
-m = re.search(r"CURRENT_PROJECT_VERSION = (\d+);", text)
-print(m.group(1) if m else "0")
+key = sys.argv[2]
+m = re.search(rf"{key} = ([^;]+);", text)
+print(m.group(1).strip().strip('"') if m else "")
 PY
-)"
+}
+
+BUILD_NUMBER="$(read_version CURRENT_PROJECT_VERSION)"
+MARKETING_VERSION="$(read_version MARKETING_VERSION)"
 ARCHIVE="$BUILD_DIR/App-b${BUILD_NUMBER}.xcarchive"
 
-echo "==> Archiving 0.1.0 ($BUILD_NUMBER)"
+echo "==> Archiving ${MARKETING_VERSION:-?} ($BUILD_NUMBER)"
 rm -rf "$ARCHIVE"
 xcodebuild archive \
   -workspace "$WORKSPACE" \
@@ -99,4 +103,4 @@ xcrun altool --upload-app \
   --apiKey "$ASC_KEY_ID" \
   --apiIssuer "$ASC_ISSUER_ID"
 
-echo "Uploaded 0.1.0 ($BUILD_NUMBER). Processing in App Store Connect usually takes a few minutes."
+echo "Uploaded ${MARKETING_VERSION:-?} ($BUILD_NUMBER). Processing in App Store Connect usually takes a few minutes."

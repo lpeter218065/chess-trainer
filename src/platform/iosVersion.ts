@@ -7,3 +7,12 @@ export function applyMarketingVersion(pbxproj: string, version: string): string 
   }
   return pbxproj.replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${version};`);
 }
+
+/** 每次发版递增 CURRENT_PROJECT_VERSION（App Store build number） */
+export function bumpCurrentProjectVersion(pbxproj: string): { text: string; build: number } {
+  const match = pbxproj.match(/CURRENT_PROJECT_VERSION = (\d+);/);
+  if (!match) throw new Error('CURRENT_PROJECT_VERSION not found');
+  const build = Number(match[1]) + 1;
+  const text = pbxproj.replace(/CURRENT_PROJECT_VERSION = \d+;/g, `CURRENT_PROJECT_VERSION = ${build};`);
+  return { text, build };
+}

@@ -18,7 +18,7 @@ CI 在 `main` 的 push / PR 上运行相同命令（`.github/workflows/ci.yml`�
 2. Xcode 打开 `ios/App/App.xcworkspace`，选 **Any iOS Device (arm64)**，**Product → Archive**。
 3. App Store Connect 填写隐私问卷（无追踪；语音仅设备端转写；API Key 在 Keychain）。
 4. 确认 `Info.plist` 用途说明与 `PrivacyInfo.xcprivacy` 与功能一致。
-5. LLM 服务地址须 **HTTPS**（已移除 `NSAllowsArbitraryLoads`，仅保留本地网络调试例外）。
+5. LLM 服务地址默认须 **HTTPS**。仅对 `43.164.135.40` 放行明文 HTTP（Info.plist `NSExceptionDomains` 与 `LLM_INSECURE_HTTP_HOSTS` 须同步）。其余主机仍禁止 http。
 
 ## Web
 

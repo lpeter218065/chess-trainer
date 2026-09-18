@@ -17,7 +17,7 @@ afterEach(() => {
 
 describe('SettingsFields HTTPS notice on native', () => {
   it('shows an iPad/iPhone warning as soon as the URL is http', () => {
-    useSettings.getState().setLlm({ baseUrl: 'http://43.164.135.40/openai/v1' });
+    useSettings.getState().setLlm({ baseUrl: 'http://8.8.8.8/v1' });
     render(
       <MemoryRouter>
         <SettingsFields showLanguage={false} />
@@ -30,6 +30,16 @@ describe('SettingsFields HTTPS notice on native', () => {
 
   it('does not warn when the URL is https', () => {
     useSettings.getState().setLlm({ baseUrl: 'https://api.openai.com/v1' });
+    render(
+      <MemoryRouter>
+        <SettingsFields showLanguage={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('does not warn for the allowlisted HTTP IP', () => {
+    useSettings.getState().setLlm({ baseUrl: 'http://43.164.135.40/openai/v1' });
     render(
       <MemoryRouter>
         <SettingsFields showLanguage={false} />

@@ -130,14 +130,18 @@ describe('assertSecureLlmBaseUrl', () => {
     expect(() => assertSecureLlmBaseUrl('http://api.example.com/v1', true)).toThrow(LlmError);
     expect(() => assertSecureLlmBaseUrl('http://api.example.com/v1', true)).toThrow(/HTTPS/);
   });
+  it('原生壳放行白名单 IP 的 http', () => {
+    expect(() => assertSecureLlmBaseUrl('http://43.164.135.40/openai/v1', true)).not.toThrow();
+  });
   it('Web 允许 http', () => {
     expect(() => assertSecureLlmBaseUrl('http://localhost:8787/v1', false)).not.toThrow();
   });
 });
 
 describe('nativeLlmUrlIssue', () => {
-  it('only flags plaintext http on native', () => {
-    expect(nativeLlmUrlIssue('http://43.164.135.40/openai/v1', true)).toBe('http');
+  it('only flags plaintext http on native outside the allowlist', () => {
+    expect(nativeLlmUrlIssue('http://8.8.8.8/v1', true)).toBe('http');
+    expect(nativeLlmUrlIssue('http://43.164.135.40/openai/v1', true)).toBeNull();
     expect(nativeLlmUrlIssue('https://api.openai.com/v1', true)).toBeNull();
     expect(nativeLlmUrlIssue('http://43.164.135.40/openai/v1', false)).toBeNull();
     expect(nativeLlmUrlIssue('', true)).toBeNull();

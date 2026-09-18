@@ -3,6 +3,7 @@ import { llmFetch } from './http';
 import { debugLog } from '../debug/log';
 import { tl } from '../i18n';
 import { isNative } from '../platform';
+import { isAllowlistedInsecureHttpHost } from './httpAllowlist';
 
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
@@ -44,8 +45,9 @@ export function nativeLlmUrlIssue(baseUrl: string, native = isNative()): 'http' 
   } catch {
     return 'invalid';
   }
-  if (url.protocol !== 'https:') return 'http';
-  return null;
+  if (url.protocol === 'https:') return null;
+  if (isAllowlistedInsecureHttpHost(url.hostname)) return null;
+  return 'http';
 }
 
 export function assertSecureLlmBaseUrl(baseUrl: string, native = isNative()): void {

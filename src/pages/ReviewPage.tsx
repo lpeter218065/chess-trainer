@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { CommentaryFocus } from '../chess/commentaryMarkers';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import type { StoreApi } from 'zustand';
 import { Board } from '../components/Board';
@@ -22,7 +23,8 @@ import { useT } from '../i18n';
 import { useSettings } from '../store/settings';
 import { getReviewStore, newReviewSession, saveReviewSessionAs, switchReviewSession, useReview } from '../store/reviewInstance';
 import { viewedPosition, type ReviewState } from '../store/review';
-import { formatMoveHeading, titleFromHeaders } from '../review/document';
+import { formatMoveHeading, groupReviewBlocks, titleFromHeaders } from '../review/document';
+import { annotationsFromReviewPly } from '../review/highlight';
 import { reviewKeyToNav } from '../review/keys';
 import { printReview } from '../review/print';
 import { useGameSessions } from '../store/gameSessions';
@@ -69,6 +71,7 @@ export function ReviewView({ store }: { store: StoreApi<ReviewState> }) {
   const httpsBlocked = nativeLlmUrlIssue(baseUrl, isNative()) === 'http';
   const [pgnInput, setPgnInput] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [hoverFocus, setHoverFocus] = useState<CommentaryFocus | null>(null);
 
   const status = useReview(store, (s) => s.status);
   const writingStage = useReview(store, (s) => s.writingStage);
@@ -90,6 +93,19 @@ export function ReviewView({ store }: { store: StoreApi<ReviewState> }) {
   const showComposer = moves.length === 0 && status !== 'analyzing' && status !== 'writing';
   const canPrint = Boolean(document && (status === 'ready' || status === 'writing'));
   const progressPct = progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+  const currentMove = ply > 0 ? moves[ply - 1] ?? null : null;
+  const stepBlocks = useMemo(() => {
+    if (!document) return [];
+    return groupReviewBlocks(document.blocks).steps.find((s) => s.ply === ply)?.blocks ?? [];
+  }, [document, ply]);
+  const boardAnnotations = useMemo(
+    () => annotationsFromReviewPly(currentMove, stepBlocks),
+    [currentMove, stepBlocks],
+  );
+
+  useEffect(() => {
+    setHoverFocus(null);
+  }, [ply]);
 
   useEffect(() => {
     if (showComposer) return;
@@ -179,6 +195,22 @@ export function ReviewView({ store }: { store: StoreApi<ReviewState> }) {
         </div>
       ) : null}
       <ReviewBook
+        mode="steps"
+        startFen={startFen}
+        moves={moves}
+        document={document}
+        ply={ply}
+        orientation={orientation}
+        onSelectPly={(next) => store.getState().setPly(next)}
+        onFocus={setHoverFocus}
+      />
+    </div>
+  );
+
+  const summaryPanel = (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3">
+      <ReviewBook
+        mode="summary"
         startFen={startFen}
         moves={moves}
         document={document}
@@ -210,6 +242,7 @@ export function ReviewView({ store }: { store: StoreApi<ReviewState> }) {
     <>
       <TrainerLayout
         storageKey="review-v1"
+        narrowLeft
         detailDefault={showComposer ? 'expanded' : 'half'}
         collapsedAction={!hasKey ? <MissingKeyEmpty compact onConfigure={() => setSettingsOpen(true)} /> : undefined}
         header={
@@ -246,9 +279,9 @@ export function ReviewView({ store }: { store: StoreApi<ReviewState> }) {
                 fen={viewed.fen}
                 orientation={orientation}
                 interactive={false}
-                annotations={null}
+                annotations={boardAnnotations}
                 hintArrow={null}
-                hoverFocus={null}
+                hoverFocus={hoverFocus}
                 lastMove={viewed.lastMove}
                 onMove={() => false}
               />
@@ -322,11 +355,32 @@ export function ReviewView({ store }: { store: StoreApi<ReviewState> }) {
             </div>
           ) : undefined
         }
-        panels={[
-          { id: 'notes', label: t('trainer.commentary'), disabled: !hasKey && showComposer, content: notes },
-          { id: 'moves', label: t('explore.moves'), content: scorePanel },
-        ]}
+        panels={
+          showComposer
+            ? [
+                { id: 'notes', label: t('trainer.commentary'), content: notes },
+                { id: 'moves', label: t('explore.moves'), content: scorePanel },
+              ]
+            : [
+                { id: 'notes', label: t('trainer.commentary'), content: notes },
+                { id: 'summary', label: t('review.summary'), content: summaryPanel },
+                { id: 'moves', label: t('explore.moves'), content: scorePanel },
+              ]
+        }
       />
+      {document ? (
+        <div className="review-print-full" aria-hidden="true">
+          <ReviewBook
+            mode="all"
+            startFen={startFen}
+            moves={moves}
+            document={document}
+            ply={ply}
+            orientation={orientation}
+            onSelectPly={() => {}}
+          />
+        </div>
+      ) : null}
       {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </>
   );

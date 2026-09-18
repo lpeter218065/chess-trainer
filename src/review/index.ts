@@ -10,6 +10,7 @@ export type {
 export { annotateGame, skeletonMoves, REVIEW_MAX_PLIES } from './annotate';
 export { buildAnnotatedPgn, playLine, playSans, sidelinesForMove } from './pgnExport';
 export { markKeyMoves, nagFromQuality } from './moments';
+export { annotationsFromReviewPly, focusFromVariationLine } from './highlight';
 export { reviewKeyToNav } from './keys';
 export { printReview } from './print';
 export {

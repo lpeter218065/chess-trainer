@@ -443,6 +443,7 @@ export const chrome = {
   'review.unknownPlayer': { zh: '未知', en: 'Unknown' },
   'review.progressAria': { zh: '复盘进度', en: 'Review progress' },
   'review.book': { zh: '复盘正文', en: 'Review text' },
+  'review.summary': { zh: '总结', en: 'Summary' },
   'review.atStart': { zh: '点棋谱或用左右键，看每一步的解说。', en: 'Tap a move or use the arrows to read that step.' },
   'review.startPos': { zh: '起始局面', en: 'Starting position' },
   'review.stepNav': { zh: '逐步回放', en: 'Step through the game' },

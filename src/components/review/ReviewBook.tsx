@@ -1,7 +1,9 @@
 import { MiniBoard } from '../MiniBoard';
 import { formatCompactScore, formatMoveHeading, groupReviewBlocks } from '../../review/document';
 import { playLine } from '../../review/pgnExport';
+import { focusFromVariationLine } from '../../review/highlight';
 import type { AnnotatedMove, ReviewBlock, ReviewDocument, VariationLine } from '../../review/types';
+import type { CommentaryFocus } from '../../chess/commentaryMarkers';
 import { useT } from '../../i18n';
 
 function VariationTree({
@@ -10,12 +12,14 @@ function VariationTree({
   orientation,
   idPrefix,
   depth = 0,
+  onFocus,
 }: {
   lines: VariationLine[];
   fen: string;
   orientation: 'white' | 'black';
   idPrefix: string;
   depth?: number;
+  onFocus?: (focus: CommentaryFocus | null) => void;
 }) {
   const t = useT();
   return (
@@ -27,8 +31,18 @@ function VariationTree({
           const from = playLine(after, child.moves).sans.length ? after : fen;
           return { child, from };
         });
+        const focusLine = () => {
+          const focus = focusFromVariationLine(fen, line.moves);
+          if (focus) onFocus?.(focus);
+        };
         return (
-          <li key={`${line.label ?? i}-${line.moves}`}>
+          <li
+            key={`${line.label ?? i}-${line.moves}`}
+            className="review-var-item"
+            onMouseEnter={focusLine}
+            onMouseLeave={() => onFocus?.(null)}
+            onClick={focusLine}
+          >
             <p>
               {line.label ? <span className="review-var-label">({line.label})</span> : null}{' '}
               {line.moves ? <span className="review-var-moves">{line.moves}</span> : null}{' '}
@@ -53,6 +67,7 @@ function VariationTree({
                 orientation={orientation}
                 idPrefix={`${idPrefix}-${i}-${ci}`}
                 depth={depth + 1}
+                onFocus={onFocus}
               />
             ))}
           </li>
@@ -69,6 +84,8 @@ export function ReviewBook({
   ply,
   orientation,
   onSelectPly,
+  onFocus,
+  mode = 'steps',
 }: {
   startFen: string;
   moves: AnnotatedMove[];
@@ -76,6 +93,9 @@ export function ReviewBook({
   ply: number;
   orientation: 'white' | 'black';
   onSelectPly: (ply: number) => void;
+  onFocus?: (focus: CommentaryFocus | null) => void;
+  /** summary：总评；steps：当前步与变化；all：打印整章 */
+  mode?: 'summary' | 'steps' | 'all';
 }) {
   const t = useT();
   const score = formatCompactScore(startFen, moves);
@@ -135,6 +155,7 @@ export function ReviewBook({
             fen={from}
             orientation={orientation}
             idPrefix={`var-${block.ply}-${index}`}
+            onFocus={onFocus}
           />
         ) : (
           <VariationTree
@@ -142,42 +163,57 @@ export function ReviewBook({
             fen={startFen}
             orientation={orientation}
             idPrefix={`var-${block.ply}-${index}`}
+            onFocus={onFocus}
           />
         )}
       </div>
     );
   };
 
+  const showSummary = mode === 'summary' || mode === 'all';
+  const showSteps = mode === 'steps' || mode === 'all';
+  const showAllSteps = mode === 'all';
+
   return (
-    <article id="review-book" className="review-book selectable-text" aria-label={t('review.book')}>
-      <div className="review-lead-card">
-        {document.title ? <h2 className="review-chapter-title">{document.title}</h2> : null}
-        {score ? (
-          <p className="review-print-score">
-            <span className="review-print-score-label">{t('review.printScore')}</span>
-            {score}
-          </p>
-        ) : null}
-        {document.overview ? <p className="review-overview">{document.overview}</p> : null}
-        {lead.map((block, i) => renderBlock(block, `lead-${i}`))}
-        {ply <= 0 ? <p className="review-step-hint no-print">{t('review.atStart')}</p> : null}
-      </div>
-      {steps.map((step) => {
-        const active = ply === step.ply;
-        return (
-          <div
-            key={step.ply}
-            className={`review-step${active ? ' is-active' : ''}`}
-            data-ply={step.ply}
-            hidden={!active}
-          >
-            <div className="review-step-card">
-              {step.blocks.map((block, i) => renderBlock(block, `${step.ply}-${i}`))}
-            </div>
-          </div>
-        );
-      })}
-      {ply > 0 && !steps.some((s) => s.ply === ply) ? (
+    <article
+      id={mode === 'steps' ? 'review-book' : undefined}
+      className="review-book selectable-text"
+      aria-label={mode === 'summary' ? t('review.summary') : t('review.book')}
+    >
+      {showSummary ? (
+        <div className="review-lead-card">
+          {document.title ? <h2 className="review-chapter-title">{document.title}</h2> : null}
+          {score ? (
+            <p className="review-print-score">
+              <span className="review-print-score-label">{t('review.printScore')}</span>
+              {score}
+            </p>
+          ) : null}
+          {document.overview ? <p className="review-overview">{document.overview}</p> : null}
+          {lead.map((block, i) => renderBlock(block, `lead-${i}`))}
+        </div>
+      ) : null}
+      {showSteps && ply <= 0 && !showAllSteps ? (
+        <p className="review-step-hint no-print">{t('review.atStart')}</p>
+      ) : null}
+      {showSteps
+        ? steps.map((step) => {
+            const active = showAllSteps || ply === step.ply;
+            return (
+              <div
+                key={step.ply}
+                className={`review-step${active && !showAllSteps ? ' is-active' : ''}`}
+                data-ply={step.ply}
+                hidden={!active}
+              >
+                <div className="review-step-card">
+                  {step.blocks.map((block, i) => renderBlock(block, `${step.ply}-${i}`))}
+                </div>
+              </div>
+            );
+          })
+        : null}
+      {showSteps && ply > 0 && !showAllSteps && !steps.some((s) => s.ply === ply) ? (
         <p className="review-step-hint no-print">{t('review.stepEmpty')}</p>
       ) : null}
     </article>

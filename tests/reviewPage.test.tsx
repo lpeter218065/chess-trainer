@@ -69,14 +69,17 @@ describe('ReviewView', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '开始复盘' }));
     });
-    expect(await screen.findByRole('heading', { level: 2, name: '王翼进攻' })).toBeTruthy();
-    expect(screen.getByText('本局白方抢攻王翼。')).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: '讲解' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '总结' })).toBeTruthy();
     expect(store.getState().ply).toBe(2);
-    const visible = () => document.querySelector('.review-step:not([hidden])');
+    const visible = () => document.querySelector('#review-book .review-step:not([hidden])');
     expect(visible()?.textContent).toContain('对称应着。');
     expect(visible()?.textContent).not.toContain('中心一兵。');
-    expect(visible()?.querySelector('.review-main-diagram')).toBeTruthy();
     expect(visible()?.querySelector('[data-testid="review-var-board"]')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: '总结' }));
+    expect(screen.getByRole('heading', { level: 2, name: '王翼进攻' })).toBeTruthy();
+    expect(screen.getAllByText('本局白方抢攻王翼。').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('tab', { name: '讲解' }));
     fireEvent.click(screen.getByRole('button', { name: /上一步/ }));
     expect(store.getState().ply).toBe(1);
     expect(visible()?.textContent).toContain('中心一兵。');

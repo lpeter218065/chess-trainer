@@ -29,6 +29,8 @@ export interface TrainerLayoutProps {
   detailDefault?: 'collapsed' | 'half' | 'expanded';
   /** 折叠条上的附加操作（例如「去配置 Key」） */
   collapsedAction?: ReactNode;
+  /** 复盘：左侧棋谱收窄，中间棋盘加宽 */
+  narrowLeft?: boolean;
 }
 
 function readStored(key: string, valid: string[], fallback: string): string {
@@ -168,6 +170,7 @@ export function TrainerLayout({
   storageKey,
   detailDefault = 'half',
   collapsedAction,
+  narrowLeft = false,
 }: TrainerLayoutProps) {
   const { width, height, layoutHeight, offsetTop, keyboardOpen, klass } = useTrainerViewport();
   const hasLeft = leftPanel != null;
@@ -299,7 +302,12 @@ export function TrainerLayout({
       data-keyboard={keyboardOpen}
     >
       <div className="trainer-header mb-1.5 min-w-0 shrink-0">{header}</div>
-      <div ref={workspaceRef} className="trainer-workspace" data-candidates={hasLeft}>
+      <div
+        ref={workspaceRef}
+        className="trainer-workspace"
+        data-candidates={hasLeft}
+        data-left={narrowLeft ? 'narrow' : undefined}
+      >
         {mode === 'wide' && hasLeft && (
           <aside className="trainer-candidates panel min-h-0 min-w-0 overflow-hidden p-2">{leftPanel}</aside>
         )}

@@ -1195,6 +1195,12 @@ input[type="range"]:active::-webkit-slider-thumb {
 [data-layout="wide"] .trainer-workspace[data-candidates="true"] {
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1fr);
 }
+[data-layout="wide"] .trainer-workspace[data-candidates="true"][data-left="narrow"] {
+  grid-template-columns: minmax(8.5rem, 12.5rem) minmax(0, 1.65fr) minmax(16rem, 0.95fr);
+}
+[data-layout="split"] .trainer-workspace[data-left="narrow"] {
+  grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.9fr);
+}
 
 [data-layout="split"] .trainer-header > header {
   flex-wrap: nowrap;
@@ -1916,7 +1922,7 @@ input[type="range"]:active::-webkit-slider-thumb {
 }
 .review-var-plate {
   margin: 0.45rem 0 0.85rem;
-  width: min(100%, 11.5rem);
+  width: min(100%, 16rem);
   padding: 0.45rem;
   border: 1px solid var(--color-line);
   border-radius: 0.75rem;
@@ -1942,6 +1948,15 @@ input[type="range"]:active::-webkit-slider-thumb {
   margin: 0 0 1rem;
   padding: 0.15rem 0 0.15rem 0.75rem;
   border-left: 3px solid color-mix(in srgb, var(--color-walnut) 18%, var(--color-line));
+}
+.review-var-item {
+  cursor: pointer;
+  border-radius: 0.5rem;
+  padding: 0.15rem 0.25rem;
+}
+.review-var-item:hover,
+.review-var-item:focus-within {
+  background: color-mix(in srgb, var(--color-select) 55%, transparent);
 }
 .review-var-list {
   margin: 0;
@@ -2038,18 +2053,15 @@ input[type="range"]:active::-webkit-slider-thumb {
 .review-print-score {
   display: none;
 }
+.review-print-full {
+  display: none;
+}
 
 @media print {
   .no-print,
   .ios-status-bar-blur,
   .nav-back,
-  .trainer-header,
-  .trainer-board,
-  .trainer-candidates,
-  .trainer-tabs,
-  .detail-handle,
-  .board-toolbar,
-  .board-status {
+  .trainer-shell {
     display: none !important;
   }
 
@@ -2061,25 +2073,8 @@ input[type="range"]:active::-webkit-slider-thumb {
     print-color-adjust: exact;
   }
 
-  .trainer-shell,
-  .trainer-workspace,
-  .trainer-detail,
-  .trainer-panel {
-    display: block !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
-    min-height: 0 !important;
-    position: static !important;
-    grid: none !important;
-  }
-
-  .trainer-panel[hidden]:not(:has(.review-book)) {
-    display: none !important;
-  }
-
-  .trainer-panel:has(.review-book) {
-    display: block !important;
+  .review-print-full {
+    display: block;
   }
 
   .review-book {

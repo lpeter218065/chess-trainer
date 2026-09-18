@@ -18,7 +18,14 @@ export async function createEngineService(workerUrl: string): Promise<EnginePort
   const opponent = new StockfishEngine(workerUrl);
   await Promise.all([analyst.init(), opponent.init()]);
   await analyst.setOptions({ 'Skill Level': 20, MultiPV: 3 });
-  const scheduler = createAnalysisScheduler((fen, multiPv) => analyst.analyze(fen, ANALYSIS_DEPTH, multiPv, ANALYSIS_MOVETIME_MS));
+  const scheduler = createAnalysisScheduler((fen, multiPv, limits) =>
+    analyst.analyze(
+      fen,
+      limits?.depth ?? ANALYSIS_DEPTH,
+      multiPv,
+      limits?.moveTimeMs ?? ANALYSIS_MOVETIME_MS,
+    ),
+  );
   let lastSkill = -1;
   return {
     analyze: scheduler.analyze,

@@ -88,6 +88,14 @@ export function HomePage() {
             </svg>
             {t('home.explore')}
           </Link>
+          <Link to="/review" state={{ from: 'home' }} className="btn text-sm gap-1.5">
+            <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4.5 3.2h8.2c.9 0 1.6.7 1.6 1.6v11.5H6.2A1.7 1.7 0 0 0 4.5 15V3.2Z" />
+              <path d="M14.3 16.3H6.2A1.7 1.7 0 0 1 4.5 14.6" />
+              <path d="M7.2 6.4h5.2M7.2 9.2h5.2M7.2 12h3.2" />
+            </svg>
+            {t('home.review')}
+          </Link>
           <Link to="/analyses" className="btn text-sm gap-1.5">
             <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M4.5 3.5A2 2 0 0 1 6.5 2h9v14.5h-9a2 2 0 0 0-2 2V3.5Z" />

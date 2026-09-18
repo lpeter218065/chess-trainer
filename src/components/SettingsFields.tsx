@@ -4,8 +4,18 @@ import { DIFFICULTIES, type DifficultyId } from '../engine/difficulty';
 import { requestDebugOverlay } from '../debug/install';
 import { debugLog } from '../debug/log';
 import { useT, type LocalePreference } from '../i18n';
-import { probeLlmConnection } from '../llm/client';
+import { nativeLlmUrlIssue, probeLlmConnection } from '../llm/client';
+import { isNative } from '../platform';
 import { useSettings } from '../store/settings';
+
+export function HttpsRequiredNotice() {
+  const t = useT();
+  return (
+    <p role="alert" className="https-required-notice">
+      {t('settings.httpsRequired')}
+    </p>
+  );
+}
 
 export function LanguageChips() {
   const t = useT();
@@ -43,6 +53,7 @@ export function SettingsFields({ onClose, showLanguage = true }: { onClose?: () 
     useSettings();
   const [status, setStatus] = useState('');
   const [showKey, setShowKey] = useState(false);
+  const urlIssue = nativeLlmUrlIssue(llm.baseUrl, isNative());
   const resetFromEnv = () => {
     const env = import.meta.env;
     const effort = env.VITE_LLM_REASONING_EFFORT as typeof llm.reasoningEffort | undefined;
@@ -76,9 +87,17 @@ export function SettingsFields({ onClose, showLanguage = true }: { onClose?: () 
         </div>
       )}
       <label className="block text-sm font-medium text-ink">{t('settings.baseUrl')}
-        <input className="field mt-1" value={llm.baseUrl} onChange={(e) => setLlm({ baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" autoComplete="url" />
+        <input
+          className={`field mt-1${urlIssue === 'http' ? ' is-invalid' : ''}`}
+          value={llm.baseUrl}
+          onChange={(e) => setLlm({ baseUrl: e.target.value })}
+          placeholder="https://api.openai.com/v1"
+          autoComplete="url"
+          aria-invalid={urlIssue === 'http' || undefined}
+        />
         <span className="mt-1 block text-xs text-muted">{t('settings.baseUrlHint')}</span>
       </label>
+      {urlIssue === 'http' ? <HttpsRequiredNotice /> : null}
       <label className="mt-3 block text-sm font-medium text-ink">{t('settings.apiKey')}
         <span className="mt-1 flex gap-2">
           <input className="field" type={showKey ? 'text' : 'password'} value={llm.apiKey} onChange={(e) => setLlm({ apiKey: e.target.value })} autoComplete="off" />

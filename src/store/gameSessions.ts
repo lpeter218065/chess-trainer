@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { createPlatformStorage, debounceStorage } from '../platform/storage';
 import { snapshotStorage } from './snapshotStorage';
-import { exploreSummary, lessonSummary } from './sessionSummary';
+import { exploreSummary, lessonSummary, reviewSummary } from './sessionSummary';
 import type { MoveNodeId, MoveTree } from '../chess/moveTree';
 import type { FollowUpTurn } from '../llm/prompts';
 import type { DifficultyId } from '../engine/difficulty';
@@ -10,9 +10,10 @@ import type { OpeningDrill } from '../lessons/openingDrills';
 import type { Angle } from '../llm/angles';
 import type { Phase, Round } from './session';
 import type { Outcome } from '../chess/result';
+import type { AnnotatedMove, ReviewDocument } from '../review/types';
 import { tl } from '../i18n';
 
-export type SessionKind = 'explore' | 'lesson';
+export type SessionKind = 'explore' | 'lesson' | 'review';
 
 export interface SessionMeta {
   id: string;
@@ -50,6 +51,18 @@ export interface CommentaryEntry {
   updatedAt: string;
 }
 
+export interface ReviewSnapshot {
+  pgn: string;
+  headers: Record<string, string>;
+  startFen: string;
+  moves: AnnotatedMove[];
+  document: ReviewDocument | null;
+  /** 带括号变例与短评的复盘 PGN；旧快照可能没有 */
+  annotatedPgn?: string;
+  ply: number;
+  orientation: 'white' | 'black';
+}
+
 export interface LessonSnapshot {
   lessonId: string;
   difficultyId: DifficultyId;
@@ -72,7 +85,8 @@ interface GameSessionsState {
   metas: Record<string, SessionMeta>;
   activeExploreId: string | null;
   activeLessonId: string | null;
-  /** 全局当前会话：探索与课程同时存在活动项时，列表只标这一条为「当前」 */
+  activeReviewId: string | null;
+  /** 全局当前会话：多种活动项同时存在时，列表只标这一条为「当前」 */
   currentSessionId: string | null;
 
   list(kind: SessionKind): SessionMeta[];
@@ -80,19 +94,24 @@ interface GameSessionsState {
   ensureLessonActive(lessonId: string, defaultTitle: string): string;
   saveExploreSnapshot(id: string, snap: ExploreSnapshot, title?: string): void;
   saveLessonSnapshot(id: string, snap: LessonSnapshot, title?: string): void;
+  saveReviewSnapshot(id: string, snap: ReviewSnapshot, title?: string): void;
   saveAsExplore(fromId: string, title: string): string | null;
   saveAsLesson(fromId: string, title: string): string | null;
   rename(id: string, title: string): void;
   setActiveExplore(id: string): void;
   setActiveLesson(id: string): void;
+  setActiveReview(id: string): void;
   deleteSession(id: string): void;
   newExplore(title?: string): string;
+  newReview(title?: string): string;
+  ensureReviewActive(defaultTitle?: string): string;
   flushPendingSave(): Promise<void>;
   newLesson(lessonId: string, title: string, extra?: { drill?: OpeningDrill }): string;
   /** 读取该会话的快照到内存缓存；读快照前必须先 await 它 */
   loadSnapshot(id: string): Promise<void>;
   getExploreSnapshot(id: string): ExploreSnapshot | null;
   getLessonSnapshot(id: string): LessonSnapshot | null;
+  getReviewSnapshot(id: string): ReviewSnapshot | null;
 }
 
 /** 持久化的部分：只有 metas 与活动会话，快照走 snapshotStorage 分 key 存 */
@@ -100,6 +119,7 @@ export interface PersistedGameSessions {
   metas: Record<string, SessionMeta>;
   activeExploreId: string | null;
   activeLessonId: string | null;
+  activeReviewId: string | null;
   currentSessionId: string | null;
 }
 
@@ -108,6 +128,7 @@ export function resolveCurrentSessionId(s: {
   metas: Record<string, SessionMeta>;
   activeExploreId: string | null;
   activeLessonId: string | null;
+  activeReviewId?: string | null;
   currentSessionId?: string | null;
 }): string | null {
   const claimed = s.currentSessionId;
@@ -115,15 +136,13 @@ export function resolveCurrentSessionId(s: {
     const meta = s.metas[claimed];
     if (meta?.kind === 'explore' && s.activeExploreId === claimed) return claimed;
     if (meta?.kind === 'lesson' && s.activeLessonId === claimed) return claimed;
+    if (meta?.kind === 'review' && s.activeReviewId === claimed) return claimed;
   }
-  const explore = s.activeExploreId ? s.metas[s.activeExploreId] : undefined;
-  const lesson = s.activeLessonId ? s.metas[s.activeLessonId] : undefined;
-  const exploreOk = explore?.kind === 'explore' ? explore : undefined;
-  const lessonOk = lesson?.kind === 'lesson' ? lesson : undefined;
-  if (exploreOk && lessonOk) {
-    return exploreOk.updatedAt >= lessonOk.updatedAt ? exploreOk.id : lessonOk.id;
-  }
-  return exploreOk?.id ?? lessonOk?.id ?? null;
+  const candidates = [s.activeExploreId, s.activeLessonId, s.activeReviewId ?? null]
+    .map((id) => (id ? s.metas[id] : undefined))
+    .filter((m): m is SessionMeta => Boolean(m));
+  if (candidates.length === 0) return null;
+  return [...candidates].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0].id;
 }
 
 function nowIso() {
@@ -165,14 +184,17 @@ export function migrateGameSessions(persisted: unknown, version: number): Persis
   }
   const activeExploreId = p.activeExploreId ?? null;
   const activeLessonId = p.activeLessonId ?? null;
+  const activeReviewId = p.activeReviewId ?? null;
   return {
     metas,
     activeExploreId,
     activeLessonId,
+    activeReviewId,
     currentSessionId: resolveCurrentSessionId({
       metas,
       activeExploreId,
       activeLessonId,
+      activeReviewId,
       currentSessionId: p.currentSessionId ?? null,
     }),
   };
@@ -184,6 +206,7 @@ export const useGameSessions = create<GameSessionsState>()(
       metas: {},
       activeExploreId: null,
       activeLessonId: null,
+      activeReviewId: null,
       currentSessionId: null,
 
       list(kind) {
@@ -217,6 +240,15 @@ export const useGameSessions = create<GameSessionsState>()(
         return get().newLesson(lessonId, defaultTitle);
       },
 
+      ensureReviewActive(defaultTitle) {
+        const s = get();
+        if (s.activeReviewId && s.metas[s.activeReviewId]?.kind === 'review') {
+          if (s.currentSessionId !== s.activeReviewId) set({ currentSessionId: s.activeReviewId });
+          return s.activeReviewId;
+        }
+        return get().newReview(defaultTitle);
+      },
+
       saveExploreSnapshot(id, snap, title) {
         const prev = get().metas[id];
         if (!prev || prev.kind !== 'explore') return;
@@ -243,6 +275,18 @@ export const useGameSessions = create<GameSessionsState>()(
               lessonId: snap.lessonId,
               summary: lessonSummary(snap),
             },
+          },
+        }));
+      },
+
+      saveReviewSnapshot(id, snap, title) {
+        const prev = get().metas[id];
+        if (!prev || prev.kind !== 'review') return;
+        snapshotStorage.set(id, snap);
+        set((s) => ({
+          metas: {
+            ...s.metas,
+            [id]: { ...prev, title: title ?? prev.title, updatedAt: nowIso(), summary: reviewSummary(snap) },
           },
         }));
       },
@@ -307,25 +351,34 @@ export const useGameSessions = create<GameSessionsState>()(
         set({ activeLessonId: id, currentSessionId: id });
       },
 
+      setActiveReview(id) {
+        if (get().metas[id]?.kind !== 'review') return;
+        set({ activeReviewId: id, currentSessionId: id });
+      },
+
       deleteSession(id) {
         snapshotStorage.remove(id);
         set((s) => {
           const metas = { ...s.metas };
           delete metas[id];
-          let { activeExploreId, activeLessonId, currentSessionId } = s;
+          let { activeExploreId, activeLessonId, activeReviewId, currentSessionId } = s;
           if (activeExploreId === id) {
             activeExploreId = Object.values(metas).find((m) => m.kind === 'explore')?.id ?? null;
           }
           if (activeLessonId === id) {
             activeLessonId = Object.values(metas).find((m) => m.kind === 'lesson')?.id ?? null;
           }
+          if (activeReviewId === id) {
+            activeReviewId = Object.values(metas).find((m) => m.kind === 'review')?.id ?? null;
+          }
           currentSessionId = resolveCurrentSessionId({
             metas,
             activeExploreId,
             activeLessonId,
+            activeReviewId,
             currentSessionId: currentSessionId === id ? null : currentSessionId,
           });
-          return { metas, activeExploreId, activeLessonId, currentSessionId };
+          return { metas, activeExploreId, activeLessonId, activeReviewId, currentSessionId };
         });
       },
 
@@ -340,6 +393,22 @@ export const useGameSessions = create<GameSessionsState>()(
         set((s) => ({
           metas: { ...s.metas, [id]: meta },
           activeExploreId: id,
+          currentSessionId: id,
+        }));
+        return id;
+      },
+
+      newReview(title) {
+        const id = newId();
+        const meta: SessionMeta = {
+          id,
+          kind: 'review',
+          title: title?.trim() || tl('review.untitled'),
+          updatedAt: nowIso(),
+        };
+        set((s) => ({
+          metas: { ...s.metas, [id]: meta },
+          activeReviewId: id,
           currentSessionId: id,
         }));
         return id;
@@ -375,16 +444,21 @@ export const useGameSessions = create<GameSessionsState>()(
         return snapshotStorage.peek<LessonSnapshot>(id);
       },
 
+      getReviewSnapshot(id) {
+        return snapshotStorage.peek<ReviewSnapshot>(id);
+      },
+
       flushPendingSave,
     }),
     {
       name: 'chess-trainer-game-sessions',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => gameSessionStorage),
       partialize: (s) => ({
         metas: s.metas,
         activeExploreId: s.activeExploreId,
         activeLessonId: s.activeLessonId,
+        activeReviewId: s.activeReviewId,
         currentSessionId: s.currentSessionId,
       }),
       migrate: (p, v) => migrateGameSessions(p, v) as unknown as GameSessionsState,

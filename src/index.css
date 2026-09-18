@@ -237,6 +237,19 @@ button:disabled {
 .field:focus {
   border-color: var(--color-brass);
 }
+.field.is-invalid {
+  border-color: var(--color-danger);
+}
+.https-required-notice {
+  margin-top: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-line));
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-ivory));
+  color: var(--color-danger);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
 .field:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -1707,5 +1720,336 @@ input[type="range"]:active::-webkit-slider-thumb {
   }
   .campaign-side {
     padding: 1.6rem 1.65rem 1.4rem;
+  }
+}
+
+/* 复盘：棋桌上摊开的一章棋谱 */
+.review-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 78rem;
+}
+.review-header {
+  margin-bottom: 1.25rem;
+}
+.review-composer {
+  max-width: 42rem;
+}
+.review-composer-lead {
+  margin-bottom: 1.25rem;
+  max-width: 38rem;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: var(--color-muted);
+}
+.review-pgn-field {
+  min-height: 14rem;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+.review-workspace {
+  display: grid;
+  gap: 1.5rem;
+  min-width: 0;
+}
+.review-board-col,
+.review-book-col {
+  min-width: 0;
+}
+.review-board-frame {
+  width: min(100%, 28rem);
+  margin-inline: auto;
+}
+.review-score {
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.35rem 0.15rem;
+}
+.review-progress,
+.review-progress-note {
+  margin-bottom: 1rem;
+}
+.review-progress-track {
+  margin-top: 0.45rem;
+  height: 0.4rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-walnut) 14%, var(--color-line));
+}
+.review-progress-fill {
+  height: 100%;
+  background: var(--color-walnut);
+  transition: width 180ms ease;
+}
+.review-book {
+  max-width: 42rem;
+  font-family: "Iowan Old Style", Palatino, "Palatino Linotype", "Songti SC", "Noto Serif SC", "Songti TC", serif;
+  font-size: 1.02rem;
+  line-height: 1.78;
+  color: var(--color-ink);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.review-chapter-title {
+  margin: 0 0 0.85rem;
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+}
+.review-overview,
+.review-para,
+.review-move-text,
+.review-var-intro {
+  margin: 0 0 0.9rem;
+}
+.review-move {
+  margin: 0 0 1.15rem;
+  padding: 0.15rem 0 0.15rem 0.75rem;
+  border-left: 3px solid transparent;
+  border-radius: 0 0.4rem 0.4rem 0;
+}
+.review-move.is-current,
+.review-variation.is-current {
+  border-left-color: var(--color-brass);
+  background: color-mix(in srgb, var(--color-select) 48%, transparent);
+}
+.review-move-head {
+  display: inline;
+  margin: 0 0 0.35rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-display);
+  font-size: 1.12rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-walnut);
+  cursor: pointer;
+}
+.review-move-head:hover,
+.review-move-head:focus-visible {
+  color: color-mix(in srgb, var(--color-walnut) 70%, var(--color-brass));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.review-diagram-plate {
+  margin: 0.4rem 0 1.2rem;
+  max-width: 18rem;
+  padding: 0.7rem 0.7rem 0.55rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--color-cream) 70%, var(--color-ivory));
+  box-shadow: 0 1px 0 rgba(61, 41, 30, 0.04);
+}
+.review-diagram-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.review-diagram-plate figcaption {
+  margin-top: 0.45rem;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+}
+.review-variation {
+  margin: 0 0 1rem;
+  padding: 0.15rem 0 0.15rem 0.75rem;
+  border-left: 3px solid color-mix(in srgb, var(--color-walnut) 18%, var(--color-line));
+}
+.review-var-list {
+  margin: 0;
+  padding-left: 1.15rem;
+}
+.review-var-list.is-nested {
+  margin-top: 0.35rem;
+}
+.review-var-label {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--color-walnut);
+}
+.review-var-moves {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+.review-pgn-panel {
+  margin-top: 1.75rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--color-line);
+}
+.review-pgn-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+.review-pgn-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.review-pgn-head p {
+  margin: 0.2rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+@media (min-width: 900px) {
+  .review-workspace {
+    grid-template-columns: minmax(16.5rem, 22.5rem) minmax(0, 1fr);
+    align-items: start;
+    gap: 2rem;
+  }
+  .review-board-col {
+    position: sticky;
+    top: calc(env(safe-area-inset-top) + 0.75rem);
+  }
+  .review-board-frame {
+    width: 100%;
+    margin-inline: 0;
+  }
+  .review-score {
+    max-height: min(28vh, 16rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-progress-fill {
+    transition: none;
+  }
+}
+
+.review-print-score {
+  display: none;
+}
+
+@media print {
+  .no-print,
+  .ios-status-bar-blur,
+  .nav-back {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page-shell.review-shell {
+    display: block;
+    min-height: 0;
+    max-width: none;
+    padding: 0;
+  }
+
+  .review-header {
+    margin-bottom: 0.8rem;
+  }
+
+  .review-workspace {
+    display: block;
+  }
+
+  .review-book-col {
+    max-width: none;
+  }
+
+  .review-book {
+    max-width: none;
+    font-size: 11pt;
+    line-height: 1.55;
+    color: #111;
+  }
+
+  .review-chapter-title {
+    font-size: 16pt;
+    margin-bottom: 0.45rem;
+  }
+
+  .page-title {
+    font-size: 18pt;
+  }
+
+  .review-print-score {
+    display: block;
+    margin: 0 0 0.85rem;
+    padding-bottom: 0.55rem;
+    border-bottom: 0.4pt solid #ccc;
+    font-family: var(--font-mono);
+    font-size: 9.5pt;
+    line-height: 1.45;
+  }
+
+  .review-print-score-label {
+    display: block;
+    margin-bottom: 0.2rem;
+    font-family: var(--font-sans);
+    font-size: 8pt;
+    letter-spacing: 0.06em;
+    color: #555;
+  }
+
+  .review-move,
+  .review-variation,
+  .review-diagram-plate {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .review-move,
+  .review-variation {
+    border-left: 0;
+    padding-left: 0;
+    background: none;
+    border-radius: 0;
+  }
+
+  .review-move-head {
+    color: #111;
+    text-decoration: none;
+    font-size: 12pt;
+  }
+
+  .review-diagram-plate {
+    width: 46mm;
+    max-width: 46mm;
+    padding: 2mm;
+    box-shadow: none;
+    background: #fff;
+    border-color: #bbb;
+  }
+
+  .review-diagram-btn,
+  .review-diagram-btn > div {
+    width: 42mm !important;
+    height: 42mm !important;
+    max-width: 42mm;
+  }
+
+  .review-diagram-plate figcaption {
+    font-size: 8pt;
+  }
+
+  @page {
+    margin: 14mm 14mm 16mm;
   }
 }

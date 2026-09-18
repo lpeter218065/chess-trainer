@@ -34,15 +34,24 @@ export function normalizeLlmBaseUrl(baseUrl: string): string {
 }
 
 /** iOS ATS 要求 HTTPS；在原生壳里拒绝明文 Base URL。 */
-export function assertSecureLlmBaseUrl(baseUrl: string, native = isNative()): void {
-  if (!native) return;
+export function nativeLlmUrlIssue(baseUrl: string, native = isNative()): 'http' | 'invalid' | null {
+  if (!native) return null;
+  const raw = normalizeLlmBaseUrl(baseUrl);
+  if (!raw) return null;
   let url: URL;
   try {
-    url = new URL(normalizeLlmBaseUrl(baseUrl));
+    url = new URL(raw);
   } catch {
-    throw new LlmError(tl('error.invalidBaseUrl'));
+    return 'invalid';
   }
-  if (url.protocol !== 'https:') throw new LlmError(tl('error.httpsRequired'));
+  if (url.protocol !== 'https:') return 'http';
+  return null;
+}
+
+export function assertSecureLlmBaseUrl(baseUrl: string, native = isNative()): void {
+  const issue = nativeLlmUrlIssue(baseUrl, native);
+  if (issue === 'invalid') throw new LlmError(tl('error.invalidBaseUrl'));
+  if (issue === 'http') throw new LlmError(tl('error.httpsRequired'));
 }
 
 export function chatCompletionsUrl(baseUrl: string): string {

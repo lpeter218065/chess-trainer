@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { streamChat, LlmError, normalizeLlmBaseUrl, chatCompletionsUrl, lowerEffort, formatLlmHttpError, assertSecureLlmBaseUrl } from '../src/llm/client';
+import { streamChat, LlmError, normalizeLlmBaseUrl, chatCompletionsUrl, lowerEffort, formatLlmHttpError, assertSecureLlmBaseUrl, nativeLlmUrlIssue } from '../src/llm/client';
 import { useSettings } from '../src/store/settings';
 
 function sseResponse(chunks: string[], status = 200): Response {
@@ -128,8 +128,18 @@ describe('normalizeLlmBaseUrl', () => {
 describe('assertSecureLlmBaseUrl', () => {
   it('原生壳拒绝 http', () => {
     expect(() => assertSecureLlmBaseUrl('http://api.example.com/v1', true)).toThrow(LlmError);
+    expect(() => assertSecureLlmBaseUrl('http://api.example.com/v1', true)).toThrow(/HTTPS/);
   });
   it('Web 允许 http', () => {
     expect(() => assertSecureLlmBaseUrl('http://localhost:8787/v1', false)).not.toThrow();
+  });
+});
+
+describe('nativeLlmUrlIssue', () => {
+  it('only flags plaintext http on native', () => {
+    expect(nativeLlmUrlIssue('http://43.164.135.40/openai/v1', true)).toBe('http');
+    expect(nativeLlmUrlIssue('https://api.openai.com/v1', true)).toBeNull();
+    expect(nativeLlmUrlIssue('http://43.164.135.40/openai/v1', false)).toBeNull();
+    expect(nativeLlmUrlIssue('', true)).toBeNull();
   });
 });

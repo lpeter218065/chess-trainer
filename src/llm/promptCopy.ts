@@ -605,3 +605,78 @@ ${opts.primary}
 ${dropped}
 ${followUpHint(locale)}`;
 }
+
+export const REVIEW_SYSTEM_ZH = `你是一位国际象棋教练，要写一篇像棋谱书章节那样的复盘，用简体中文。规则：
+1. 着法一律使用标准代数记谱（Nf3、O-O、exd5、Qxh7#）。
+2. 只引用用户消息里给出的引擎线路和评估，不要自创着法；变化必须取自给出的 PV，单条变化不超过 12 步。
+3. 评估以引擎为准，不要改写胜负形势。
+4. 主线每一步都必须有解说：普通正着、出子、兑子用一句短评即可。
+5. 标了 KEY 的着法要写细，并紧跟一条 variation：像棋书那样列出 2~4 路变化（label 用 "1","2","2a"），说明「如果改走…会怎样」；同一路再分叉时用 children。PV 不够两条时有几条写几条，不要编造着法。
+6. 关键局面插入 diagram，大约每局 4~10 张，不要每步都插图。
+7. 文风像棋书：直接、具体，点出计划和战术，不要套话，不要 Markdown 标题。
+
+输出格式（NDJSON，每行一个 JSON 对象，不要代码围栏）：
+- 第一行：{"title":"章节式标题","overview":"开局选择与双方计划，一段话"}
+- 之后每行一个 block，type 只能是：
+  {"type":"move","ply":1,"san":"e4","nag":"","text":"解说"}
+  {"type":"diagram","ply":16,"caption":"图1"}
+  {"type":"variation","ply":18,"intro":"如果18.g4：","lines":[{"label":"1","moves":"f3 exf3 Nf4","text":"杀王。"},{"label":"2","moves":"Qxg4+ Kh2","text":"白王暴露。","children":[{"label":"2a","moves":"Rf5","text":"车加入杀网。"}]}]}
+  {"type":"paragraph","ply":12,"text":"过渡叙述"}
+- nag 仅用 ""、"!"、"?"、"!!"、"??"、"!?"、"?!"
+- ply 是主线半步序号（白方第一步 ply=1）
+- 必须覆盖 ply=1 到最后一步的全部 move block，按着法顺序输出`;
+
+export const REVIEW_SYSTEM_EN = `You are a chess coach writing a book-style game review in clear English. Rules:
+1. Moves always in standard algebraic (Nf3, O-O, exd5, Qxh7#).
+2. Only quote engine lines and evals from the user message; do not invent moves. Variations must come from the given PVs, at most 12 plies each.
+3. Trust the engine eval; do not rewrite the result.
+4. Every main-line move gets a comment: quiet developing moves get one short sentence.
+5. KEY moves get a fuller note and a variation block: 2–4 lines like a chess book (labels "1","2","2a"), explaining what happens if a different move is chosen. Nest further forks in children. If fewer than two PVs are given, write only those — do not invent moves.
+6. Insert diagrams at turning points, about 4–10 per game, not on every move.
+7. Write like a chess book: direct, concrete, plans and tactics. No filler. No Markdown headings.
+
+Output format (NDJSON, one JSON object per line, no code fences):
+- First line: {"title":"chapter-style title","overview":"opening choice and both plans, one paragraph"}
+- Then one block per line, type one of:
+  {"type":"move","ply":1,"san":"e4","nag":"","text":"comment"}
+  {"type":"diagram","ply":16,"caption":"Diagram 1"}
+  {"type":"variation","ply":18,"intro":"If 18.g4:","lines":[{"label":"1","moves":"f3 exf3 Nf4","text":"Mate follows."},{"label":"2","moves":"Qxg4+ Kh2","text":"The king is exposed.","children":[{"label":"2a","moves":"Rf5","text":"The rook joins the mate net."}]}]}
+  {"type":"paragraph","ply":12,"text":"bridging note"}
+- nag only "" "!" "?" "!!" "??" "!?" "?!"
+- ply is the main-line half-move index (White’s first move is ply=1)
+- Cover every move from ply=1 to the last ply, in order`;
+
+export function reviewSystem(locale: Locale): string {
+  return locale === 'en' ? REVIEW_SYSTEM_EN : REVIEW_SYSTEM_ZH;
+}
+
+export function reviewUser(body: string, locale: Locale): string {
+  if (locale === 'en') {
+    return `Write a complete book-style review of this game. Generate the whole chapter now — do not wait for a later move.
+Quiet moves: one short sentence. KEY moves: a fuller note, a diagram when useful, and 2–4 variation lines from the given PVs (nested if a line branches).
+${body}`;
+  }
+  return `请为这局棋写一篇完整的棋谱书式复盘。整章现在一次性写完，不要留到以后再讲某一步。
+普通着法一句短评。KEY 着法要写细，该插图就插图，并用给出的 PV 写出 2~4 路变化（有分叉就用 children）。
+${body}`;
+}
+
+export function reviewContinueUser(fromPly: number, lastPly: number, locale: Locale): string {
+  if (locale === 'en') {
+    return `Continue the same review from ply ${fromPly} through ply ${lastPly}. Do not repeat title or overview. Output only NDJSON block lines.`;
+  }
+  return `从 ply ${fromPly} 继续写到 ply ${lastPly}。不要重复 title 和 overview，只输出 NDJSON 的 block 行。`;
+}
+
+export function reviewExpandUser(keysBody: string, locale: Locale): string {
+  if (locale === 'en') {
+    return `The chapter is already written. Now expand only the KEY positions with book-style variations. Do not rewrite the whole game.
+For each KEY ply output one variation block (2–4 lines from the PVs below; nest forks as children). You may also output a longer move text for that ply.
+Output NDJSON block lines only — no title, no overview.
+${keysBody}`;
+  }
+  return `主复盘已经写完。现在只给 KEY 着法补棋谱书那样的变化，不要重写整章。
+每个 KEY ply 输出一条 variation（用下面的 PV 写 2~4 路，有分叉用 children）。必要时再输出该 ply 一条更完整的 move 解说。
+只输出 NDJSON 的 block 行，不要 title，不要 overview。
+${keysBody}`;
+}

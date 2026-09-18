@@ -42,13 +42,14 @@ beforeEach(() => {
     },
     activeExploreId: 'explore1',
     activeLessonId: null,
+    activeReviewId: null,
     currentSessionId: 'explore1',
   });
 });
 
 afterEach(() => {
   cleanup();
-  useGameSessions.setState({ metas: {}, activeExploreId: null, activeLessonId: null, currentSessionId: null });
+  useGameSessions.setState({ metas: {}, activeExploreId: null, activeLessonId: null, activeReviewId: null, currentSessionId: null });
 });
 
 describe('SessionBar save-as input', () => {

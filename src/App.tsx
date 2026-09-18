@@ -11,6 +11,7 @@ import { parseAppRoute } from './platform/appRoute';
 const LessonPage = lazy(() => import('./pages/LessonPage').then((m) => ({ default: m.LessonPage })));
 const ExplorePage = lazy(() => import('./pages/ExplorePage').then((m) => ({ default: m.ExplorePage })));
 const AnalysesPage = lazy(() => import('./pages/AnalysesPage').then((m) => ({ default: m.AnalysesPage })));
+const ReviewPage = lazy(() => import('./pages/ReviewPage').then((m) => ({ default: m.ReviewPage })));
 const OpeningDrillPage = lazy(() =>
   import('./pages/OpeningDrillPage').then((m) => ({ default: m.OpeningDrillPage })),
 );
@@ -78,6 +79,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/analyses" element={<AnalysesPage />} />
+            <Route path="/review" element={<ReviewPage />} />
             <Route path="/drill/:id" element={<OpeningDrillPage />} />
             <Route path="/lesson/:id" element={<LessonPage />} />
             <Route path="/explore" element={<ExplorePage />} />

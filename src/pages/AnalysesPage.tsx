@@ -103,6 +103,7 @@ export function AnalysesPage() {
   const currentId = useGameSessions(resolveCurrentSessionId);
   const deleteSession = useGameSessions((s) => s.deleteSession);
   const newExplore = useGameSessions((s) => s.newExplore);
+  const newReview = useGameSessions((s) => s.newReview);
   const navigate = useNavigate();
 
   const [query, setQuery] = useState('');
@@ -146,6 +147,10 @@ export function AnalysesPage() {
       navigate(`/explore?session=${encodeURIComponent(m.id)}`, { state: { from: 'analyses' } });
       return;
     }
+    if (m.kind === 'review') {
+      navigate(`/review?session=${encodeURIComponent(m.id)}`, { state: { from: 'analyses' } });
+      return;
+    }
     if (m.lessonId) {
       const drill = parseDrillLessonId(m.lessonId);
       if (drill) {
@@ -171,6 +176,11 @@ export function AnalysesPage() {
     navigate(`/explore?session=${encodeURIComponent(id)}`, { state: { from: 'analyses' } });
   };
 
+  const startNewReview = () => {
+    const id = newReview();
+    navigate(`/review?session=${encodeURIComponent(id)}`, { state: { from: 'analyses' } });
+  };
+
   const filterBtn = (id: KindFilter, label: string) => (
     <button
       key={id}
@@ -194,12 +204,12 @@ export function AnalysesPage() {
           <h1 className="page-title text-2xl">{t('analyses.title')}</h1>
           {hasAnySessions && (
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className="btn btn-primary text-sm" onClick={startNew}>
+              <button type="button" className="btn btn-primary text-sm" onClick={startNewReview}>
+                {t('analyses.newReview')}
+              </button>
+              <button type="button" className="btn text-sm" onClick={startNew}>
                 {t('analyses.newExplore')}
               </button>
-              <Link to="/explore" state={{ from: 'analyses' }} className="btn text-sm">
-                {t('home.explore')}
-              </Link>
             </div>
           )}
         </div>
@@ -217,7 +227,10 @@ export function AnalysesPage() {
             {t('analyses.empty')}
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <button type="button" className="btn btn-primary" onClick={startNew}>
+            <button type="button" className="btn btn-primary" onClick={startNewReview}>
+              {t('analyses.newReview')}
+            </button>
+            <button type="button" className="btn" onClick={startNew}>
               {t('analyses.newExplore')}
             </button>
             <Link to="/" className="btn">
@@ -250,6 +263,7 @@ export function AnalysesPage() {
             </div>
             <div className="analyses-filter-group shrink-0 self-start sm:self-auto" role="tablist" aria-label={t('analyses.title')}>
               {filterBtn('all', t('analyses.all'))}
+              {filterBtn('review', t('analyses.review'))}
               {filterBtn('explore', t('analyses.explore'))}
               {filterBtn('lesson', t('analyses.lesson'))}
             </div>
@@ -274,7 +288,8 @@ export function AnalysesPage() {
             <ul className="rounded-2xl border border-line bg-ivory shadow-xs">
               {items.map((m) => {
                 const active = m.id === currentId;
-                const summary = m.summary ?? (m.kind === 'explore' ? t('analyses.emptyExplore') : t('analyses.lessonPractice'));
+                const summary = m.summary
+                  ?? (m.kind === 'explore' ? t('analyses.emptyExplore') : m.kind === 'review' ? t('analyses.reviewPractice') : t('analyses.lessonPractice'));
                 return (
                   <li
                     key={m.id}
@@ -292,10 +307,10 @@ export function AnalysesPage() {
                           <div className="flex items-center gap-2">
                             <span
                               className={`badge shrink-0 ${
-                                m.kind === 'explore' ? 'badge-walnut' : 'badge-brass'
+                                m.kind === 'explore' ? 'badge-walnut' : m.kind === 'review' ? 'badge-baize' : 'badge-brass'
                               }`}
                             >
-                              {m.kind === 'explore' ? t('analyses.explore') : t('analyses.lesson')}
+                              {m.kind === 'explore' ? t('analyses.explore') : m.kind === 'review' ? t('analyses.review') : t('analyses.lesson')}
                             </span>
                             <span className="truncate font-semibold text-ink">{m.title}</span>
                             {active && <span className="shrink-0 text-[11px] font-medium text-walnut">{t('session.current')}</span>}

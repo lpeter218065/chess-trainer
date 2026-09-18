@@ -16,6 +16,10 @@ import {
   moveContinueUser,
   moveUser,
   promptLocale,
+  reviewContinueUser,
+  reviewExpandUser,
+  reviewSystem,
+  reviewUser,
   summaryUser,
 } from './promptCopy';
 
@@ -28,6 +32,8 @@ export const LLM_MAX_TOKENS = {
   hint: 200,
   summary: 800,
   assessment: 550,
+  review: 8000,
+  reviewExpand: 4000,
 } as const;
 
 export function buildIntroMessages(lesson: Lesson, principles: Principle[]): ChatMessage[] {
@@ -250,4 +256,25 @@ export function exploreFollowUpThreadId(path: string[], ply: number): string {
 
 export function lessonFollowUpThreadId(kind: 'intro' | 'round', roundIndex?: number): string {
   return kind === 'intro' ? 'lesson:intro' : `lesson:round:${roundIndex ?? 0}`;
+}
+
+export function buildReviewMessages(body: string): ChatMessage[] {
+  const locale = promptLocale();
+  return [
+    { role: 'system', content: reviewSystem(locale) },
+    { role: 'user', content: reviewUser(body, locale) },
+  ];
+}
+
+export function buildReviewContinueUser(fromPly: number, lastPly: number): ChatMessage {
+  const locale = promptLocale();
+  return { role: 'user', content: reviewContinueUser(fromPly, lastPly, locale) };
+}
+
+export function buildReviewExpandMessages(keysBody: string): ChatMessage[] {
+  const locale = promptLocale();
+  return [
+    { role: 'system', content: reviewSystem(locale) },
+    { role: 'user', content: reviewExpandUser(keysBody, locale) },
+  ];
 }

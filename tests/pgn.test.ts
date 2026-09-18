@@ -7,6 +7,30 @@ describe('parsePgn', () => {
     expect(startFen).toBe(START_FEN);
     expect(moves).toEqual(['e4', 'e5', 'Nf3']);
   });
+
+  it('读取对局头', () => {
+    const pgn = `[Event "Casual"]
+[White "Morphy"]
+[Black "Duke"]
+[Result "1-0"]
+
+1. e4 e5`;
+    const { headers, moves } = parsePgn(pgn);
+    expect(headers.White).toBe('Morphy');
+    expect(headers.Black).toBe('Duke');
+    expect(headers.Result).toBe('1-0');
+    expect(moves).toEqual(['e4', 'e5']);
+  });
+
+  it('使用 FEN 头作为起始局面', () => {
+    const pgn = `[SetUp "1"]
+[FEN "4k3/8/8/8/8/8/4P3/4K3 w - - 0 1"]
+
+1. e4`;
+    const { startFen, moves } = parsePgn(pgn);
+    expect(startFen.startsWith('4k3/8/8/8/8/8/4P3/4K3 w')).toBe(true);
+    expect(moves).toEqual(['e4']);
+  });
 });
 
 describe('parseFen', () => {

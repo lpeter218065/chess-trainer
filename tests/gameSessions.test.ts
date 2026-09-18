@@ -22,7 +22,7 @@ describe('gameSessions', () => {
   beforeEach(() => {
     backend = asyncBackend();
     __setSnapshotStorageForTests(createSnapshotStorage(backend));
-    useGameSessions.setState({ metas: {}, activeExploreId: null, activeLessonId: null, currentSessionId: null });
+    useGameSessions.setState({ metas: {}, activeExploreId: null, activeLessonId: null, activeReviewId: null, currentSessionId: null });
   });
 
   it('newExplore sets active and saveAs clones', () => {
@@ -152,6 +152,25 @@ describe('gameSessions', () => {
     gs.setActiveLesson(lesson);
     expect(useGameSessions.getState().currentSessionId).toBe(lesson);
     expect(resolveCurrentSessionId(useGameSessions.getState())).toBe(lesson);
+  });
+
+  it('newReview 写入复盘会话并标为当前', () => {
+    const id = useGameSessions.getState().newReview('测试复盘');
+    const s = useGameSessions.getState();
+    expect(s.activeReviewId).toBe(id);
+    expect(s.currentSessionId).toBe(id);
+    expect(s.metas[id].kind).toBe('review');
+    s.saveReviewSnapshot(id, {
+      pgn: '1. e4 e5',
+      headers: { White: 'A', Black: 'B', Result: '1-0' },
+      startFen: START_FEN,
+      moves: [],
+      document: null,
+      ply: 0,
+      orientation: 'white',
+    });
+    expect(useGameSessions.getState().getReviewSnapshot(id)?.headers.White).toBe('A');
+    expect(useGameSessions.getState().metas[id].summary).toContain('1-0');
   });
 
   it('未记录 currentSessionId 时，按活动项里更新更晚的一条标记', () => {

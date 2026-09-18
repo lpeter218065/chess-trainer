@@ -51,6 +51,17 @@ describe('createAnalysisScheduler', () => {
     scheduler.dispose();
   });
 
+  it('forwards depth and moveTimeMs to the runner', async () => {
+    const seen: Array<{ fen: string; limits?: { depth?: number; moveTimeMs?: number } }> = [];
+    const scheduler = createAnalysisScheduler((fen, _multiPv, limits) => {
+      seen.push({ fen, limits });
+      return Promise.resolve(analysis(fen));
+    });
+    await scheduler.analyze('review', 2, { depth: 12, moveTimeMs: 300 });
+    expect(seen[0]).toEqual({ fen: 'review', limits: { depth: 12, moveTimeMs: 300 } });
+    scheduler.dispose();
+  });
+
   it('keeps FIFO order within each priority', async () => {
     const calls: string[] = [];
     const operations: Deferred<Analysis>[] = [];

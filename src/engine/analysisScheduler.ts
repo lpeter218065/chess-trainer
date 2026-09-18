@@ -2,12 +2,17 @@ import type { Analysis } from './stockfishWorker';
 
 export type AnalysisPriority = 'foreground' | 'background';
 
-export interface AnalysisOptions {
+export interface AnalysisLimits {
+  depth?: number;
+  moveTimeMs?: number;
+}
+
+export interface AnalysisOptions extends AnalysisLimits {
   priority?: AnalysisPriority;
   signal?: AbortSignal;
 }
 
-export type AnalysisRunner = (fen: string, multiPv: number) => Promise<Analysis>;
+export type AnalysisRunner = (fen: string, multiPv: number, limits?: AnalysisLimits) => Promise<Analysis>;
 
 export interface AnalysisScheduler {
   analyze(fen: string, multiPv: number, options?: AnalysisOptions): Promise<Analysis>;
@@ -18,6 +23,8 @@ type PendingRequest = {
   fen: string;
   multiPv: number;
   priority: AnalysisPriority;
+  depth?: number;
+  moveTimeMs?: number;
   signal?: AbortSignal;
   resolve: (analysis: Analysis) => void;
   reject: (reason: unknown) => void;
@@ -99,7 +106,10 @@ export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler 
     try {
       // `run` is one complete operation: its internal option update and search
       // remain together before another request can acquire the worker slot.
-      operation = Promise.resolve(run(request.fen, request.multiPv));
+      operation = Promise.resolve(run(request.fen, request.multiPv, {
+        depth: request.depth,
+        moveTimeMs: request.moveTimeMs,
+      }));
     } catch (error) {
       operation = Promise.reject(error);
     }
@@ -131,6 +141,8 @@ export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler 
         fen,
         multiPv,
         priority: options?.priority ?? 'foreground',
+        depth: options?.depth,
+        moveTimeMs: options?.moveTimeMs,
         signal,
         resolve,
         reject,

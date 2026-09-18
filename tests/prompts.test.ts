@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect } from 'vitest';
 import {
   buildIntroMessages, buildMoveMessages, buildHintMessages, buildSummaryMessages, buildExploreMessages,
-  buildFollowUpMessages, buildAssessmentMessages, FOLLOW_UP_CHIPS, exploreFollowUpThreadId, lessonFollowUpThreadId,
+  buildFollowUpMessages, buildAssessmentMessages, buildReviewMessages, buildReviewExpandMessages, FOLLOW_UP_CHIPS, exploreFollowUpThreadId, lessonFollowUpThreadId,
 } from '../src/llm/prompts';
 import { LESSONS } from '../src/lessons';
 import { principleById } from '../src/lessons/principles';
@@ -159,6 +159,21 @@ describe('prompts', () => {
     expect(m[2].content).toBe('t4');
     expect(m[7].content).toBe('t9');
     expect(m[8].content).toBe('q');
+  });
+  it('review prompt asks for a full book chapter up front', () => {
+    const m = buildReviewMessages('Headers: A vs B\nMoves:\n1. e4 | best | +0.20→+0.25 | best e4 | PV e4 e5 KEY');
+    expect(m[0].content).toContain('棋谱书');
+    expect(m[0].content).toContain('NDJSON');
+    expect(m[0].content).toContain('2~4 路变化');
+    expect(m[1].content).toContain('一次性写完');
+    expect(m[1].content).toContain('1. e4');
+    expect(m[1].content).toContain('KEY');
+  });
+  it('review expand prompt only asks for KEY variations', () => {
+    const m = buildReviewExpandMessages('ply 18 Bxe7 KEY\nPV1: g4 f3');
+    expect(m[1].content).toContain('不要重写整章');
+    expect(m[1].content).toContain('2~4 路');
+    expect(m[1].content).toContain('ply 18');
   });
 });
 

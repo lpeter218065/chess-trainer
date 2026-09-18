@@ -97,6 +97,7 @@ interface GameSessionsState {
   saveReviewSnapshot(id: string, snap: ReviewSnapshot, title?: string): void;
   saveAsExplore(fromId: string, title: string): string | null;
   saveAsLesson(fromId: string, title: string): string | null;
+  saveAsReview(fromId: string, title: string): string | null;
   rename(id: string, title: string): void;
   setActiveExplore(id: string): void;
   setActiveLesson(id: string): void;
@@ -328,6 +329,25 @@ export const useGameSessions = create<GameSessionsState>()(
         };
         snapshotStorage.set(id, copy);
         set({ metas: { ...s.metas, [id]: meta }, activeLessonId: id, currentSessionId: id });
+        return id;
+      },
+
+      saveAsReview(fromId, title) {
+        const s = get();
+        const data = snapshotStorage.peek<ReviewSnapshot>(fromId);
+        const prev = s.metas[fromId];
+        if (!data || !prev || prev.kind !== 'review') return null;
+        const id = newId();
+        const copy = structuredClone(data);
+        const meta: SessionMeta = {
+          id,
+          kind: 'review',
+          title: title.trim() || prev.title,
+          updatedAt: nowIso(),
+          summary: reviewSummary(copy),
+        };
+        snapshotStorage.set(id, copy);
+        set({ metas: { ...s.metas, [id]: meta }, activeReviewId: id, currentSessionId: id });
         return id;
       },
 

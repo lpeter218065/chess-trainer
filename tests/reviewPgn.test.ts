@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { START_FEN, parsePgn } from '../src/chess/pgn';
-import { buildAnnotatedPgn, playSans, sidelinesForMove } from '../src/review/pgnExport';
+import { buildAnnotatedPgn, playLine, playSans, sidelinesForMove } from '../src/review/pgnExport';
 import { nagFromQuality } from '../src/review/moments';
 import type { AnnotatedMove, ReviewDocument } from '../src/review/types';
 
@@ -23,6 +23,15 @@ function move(partial: Partial<AnnotatedMove> & Pick<AnnotatedMove, 'ply' | 'san
     ...partial,
   };
 }
+
+describe('playLine', () => {
+  it('returns the fen and last move after a legal sideline', () => {
+    const played = playLine(START_FEN, '1. d4 d5');
+    expect(played.sans).toEqual(['d4', 'd5']);
+    expect(played.lastMove).toEqual({ from: 'd7', to: 'd5' });
+    expect(played.fen.startsWith('rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w')).toBe(true);
+  });
+});
 
 describe('playSans', () => {
   it('stops at the first illegal token and strips move numbers', () => {

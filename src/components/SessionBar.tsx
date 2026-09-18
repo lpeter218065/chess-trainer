@@ -9,6 +9,15 @@ function listForKind(metas: Record<string, SessionMeta>, kind: SessionKind): Ses
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+function activeIdFor(
+  kind: SessionKind,
+  s: { activeExploreId: string | null; activeLessonId: string | null; activeReviewId: string | null },
+): string | null {
+  if (kind === 'explore') return s.activeExploreId;
+  if (kind === 'lesson') return s.activeLessonId;
+  return s.activeReviewId;
+}
+
 function IconPencil() {
   return (
     <svg viewBox="0 0 16 16" className="h-4 w-4" aria-hidden="true">
@@ -58,7 +67,7 @@ export function SessionList({
 }) {
   const t = useT();
   const metasMap = useGameSessions((s) => s.metas);
-  const activeId = useGameSessions((s) => (kind === 'explore' ? s.activeExploreId : s.activeLessonId));
+  const activeId = useGameSessions((s) => activeIdFor(kind, s));
   const currentId = useGameSessions(resolveCurrentSessionId);
   const rename = useGameSessions((s) => s.rename);
   const deleteSession = useGameSessions((s) => s.deleteSession);
@@ -69,7 +78,11 @@ export function SessionList({
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
 
-  const newLabel = kind === 'explore' ? t('session.startPosition') : t('session.restart');
+  const newLabel = kind === 'explore'
+    ? t('session.startPosition')
+    : kind === 'review'
+      ? t('review.new')
+      : t('session.restart');
 
   return (
     <div>
@@ -215,7 +228,7 @@ export function SessionBar({
   onOpenChange?: (open: boolean) => void;
 }) {
   const metasMap = useGameSessions((s) => s.metas);
-  const activeId = useGameSessions((s) => (kind === 'explore' ? s.activeExploreId : s.activeLessonId));
+  const activeId = useGameSessions((s) => activeIdFor(kind, s));
   const metas = useMemo(() => listForKind(metasMap, kind), [metasMap, kind]);
   const active = useMemo(() => metas.find((m) => m.id === activeId) ?? null, [metas, activeId]);
   const t = useT();

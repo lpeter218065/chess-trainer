@@ -24,31 +24,33 @@ function tokenizeSanLine(raw: string): string[] {
     .filter((tok) => tok.length > 0 && tok !== '...' && tok !== '..');
 }
 
-export function playSans(fen: string, sans: string[]): string[] {
+export function playLine(fen: string, raw: string): {
+  sans: string[];
+  fen: string;
+  lastMove: { from: string; to: string } | null;
+} {
   const chess = new Chess(fen);
-  const out: string[] = [];
-  const tokens = tokenizeSanLine(sans.join(' '));
+  const sans: string[] = [];
+  let lastMove: { from: string; to: string } | null = null;
+  const tokens = tokenizeSanLine(raw);
   for (const san of tokens.slice(0, MAX_LINE_PLIES)) {
     try {
       const move = chess.move(san, { strict: false });
-      out.push(move.san);
+      sans.push(move.san);
+      lastMove = { from: move.from, to: move.to };
     } catch {
       break;
     }
   }
-  return out;
+  return { sans, fen: chess.fen(), lastMove };
+}
+
+export function playSans(fen: string, sans: string[]): string[] {
+  return playLine(fen, sans.join(' ')).sans;
 }
 
 function fenAfterSans(fen: string, sans: string[]): string {
-  const chess = new Chess(fen);
-  for (const san of sans) {
-    try {
-      chess.move(san, { strict: false });
-    } catch {
-      break;
-    }
-  }
-  return chess.fen();
+  return playLine(fen, sans.join(' ')).fen;
 }
 
 function pgnComment(text: string | undefined, max = 140): string {

@@ -125,6 +125,23 @@ button:disabled {
   outline-offset: 2px;
 }
 
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  z-index: 40;
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.65rem;
+  background: var(--color-walnut);
+  color: var(--color-walnut-fg);
+  font-size: 0.9rem;
+  font-weight: 600;
+  transform: translateY(-160%);
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {
@@ -1735,6 +1752,10 @@ input[type="range"]:active::-webkit-slider-thumb {
 }
 .review-composer {
   max-width: 42rem;
+  padding: 1.25rem 1.15rem 1.35rem;
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-ivory) 82%, var(--color-cream));
 }
 .review-composer-lead {
   margin-bottom: 1.25rem;
@@ -1766,7 +1787,19 @@ input[type="range"]:active::-webkit-slider-thumb {
 .review-score {
   max-height: 12rem;
   overflow: auto;
-  padding: 0.35rem 0.15rem;
+  padding: 0.35rem 0.15rem 0.5rem;
+  overscroll-behavior: contain;
+}
+.review-score-kicker {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.review-score button {
+  min-height: 2.75rem;
 }
 .review-progress,
 .review-progress-note {
@@ -1784,6 +1817,24 @@ input[type="range"]:active::-webkit-slider-thumb {
   background: var(--color-walnut);
   transition: width 180ms ease;
 }
+.review-skeleton {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+.review-skeleton span {
+  display: block;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-walnut) 12%, var(--color-line));
+  animation: review-pulse 900ms ease-in-out infinite;
+}
+.review-skeleton span:nth-child(2) { width: 86%; }
+.review-skeleton span:nth-child(3) { width: 64%; }
+@keyframes review-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
 .review-book {
   max-width: 42rem;
   font-family: "Iowan Old Style", Palatino, "Palatino Linotype", "Songti SC", "Noto Serif SC", "Songti TC", serif;
@@ -1792,6 +1843,21 @@ input[type="range"]:active::-webkit-slider-thumb {
   color: var(--color-ink);
   -webkit-user-select: text;
   user-select: text;
+}
+.review-lead-card {
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.review-step-card {
+  min-height: 4rem;
+}
+.review-step.is-active .review-step-card {
+  animation: review-step-in 200ms ease-out;
+}
+@keyframes review-step-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .review-chapter-title {
   margin: 0 0 0.85rem;
@@ -1829,13 +1895,11 @@ input[type="range"]:active::-webkit-slider-thumb {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--color-walnut);
-  cursor: pointer;
 }
-.review-move-head:hover,
-.review-move-head:focus-visible {
-  color: color-mix(in srgb, var(--color-walnut) 70%, var(--color-brass));
-  text-decoration: underline;
-  text-underline-offset: 3px;
+.review-step-hint {
+  margin: 0.35rem 0 0.9rem;
+  font-size: 0.9rem;
+  color: var(--color-muted);
 }
 .review-diagram-plate {
   margin: 0.4rem 0 1.2rem;
@@ -1845,6 +1909,18 @@ input[type="range"]:active::-webkit-slider-thumb {
   border-radius: 0.85rem;
   background: color-mix(in srgb, var(--color-cream) 70%, var(--color-ivory));
   box-shadow: 0 1px 0 rgba(61, 41, 30, 0.04);
+}
+/* 主图用左边大棋盘；屏幕上不重复，打印时再出图 */
+.review-main-diagram {
+  display: none;
+}
+.review-var-plate {
+  margin: 0.45rem 0 0.85rem;
+  width: min(100%, 11.5rem);
+  padding: 0.45rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-cream) 70%, var(--color-ivory));
 }
 .review-diagram-btn {
   display: block;
@@ -1870,6 +1946,13 @@ input[type="range"]:active::-webkit-slider-thumb {
 .review-var-list {
   margin: 0;
   padding-left: 1.15rem;
+  display: grid;
+  gap: 0.35rem 1rem;
+}
+@media (min-width: 640px) {
+  .review-var-list:not(.is-nested) {
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  }
 }
 .review-var-list.is-nested {
   margin-top: 0.35rem;
@@ -1885,9 +1968,11 @@ input[type="range"]:active::-webkit-slider-thumb {
   font-size: 0.92em;
 }
 .review-pgn-panel {
-  margin-top: 1.75rem;
-  padding-top: 1.1rem;
-  border-top: 1px solid var(--color-line);
+  margin-top: 1.5rem;
+  padding: 0.85rem 1rem 0.95rem;
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-ivory) 82%, var(--color-cream));
 }
 .review-pgn-head {
   display: flex;
@@ -1895,7 +1980,18 @@ input[type="range"]:active::-webkit-slider-thumb {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+.review-pgn-head::-webkit-details-marker {
+  display: none;
+}
+.review-pgn-panel[open] .review-pgn-head {
   margin-bottom: 0.65rem;
+}
+.review-pgn-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 .review-pgn-head h2 {
   margin: 0;
@@ -1933,6 +2029,10 @@ input[type="range"]:active::-webkit-slider-thumb {
   .review-progress-fill {
     transition: none;
   }
+  .review-step.is-active .review-step-card,
+  .review-skeleton span {
+    animation: none;
+  }
 }
 
 .review-print-score {
@@ -1942,7 +2042,14 @@ input[type="range"]:active::-webkit-slider-thumb {
 @media print {
   .no-print,
   .ios-status-bar-blur,
-  .nav-back {
+  .nav-back,
+  .trainer-header,
+  .trainer-board,
+  .trainer-candidates,
+  .trainer-tabs,
+  .detail-handle,
+  .board-toolbar,
+  .board-status {
     display: none !important;
   }
 
@@ -1954,23 +2061,25 @@ input[type="range"]:active::-webkit-slider-thumb {
     print-color-adjust: exact;
   }
 
-  .page-shell.review-shell {
-    display: block;
-    min-height: 0;
-    max-width: none;
-    padding: 0;
+  .trainer-shell,
+  .trainer-workspace,
+  .trainer-detail,
+  .trainer-panel {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    position: static !important;
+    grid: none !important;
   }
 
-  .review-header {
-    margin-bottom: 0.8rem;
+  .trainer-panel[hidden]:not(:has(.review-book)) {
+    display: none !important;
   }
 
-  .review-workspace {
-    display: block;
-  }
-
-  .review-book-col {
-    max-width: none;
+  .trainer-panel:has(.review-book) {
+    display: block !important;
   }
 
   .review-book {
@@ -2029,6 +2138,27 @@ input[type="range"]:active::-webkit-slider-thumb {
     font-size: 12pt;
   }
 
+  .review-step[hidden] {
+    display: block !important;
+  }
+
+  .review-lead-card,
+  .review-step-card {
+    padding: 0;
+    border: 0;
+    background: none;
+    border-radius: 0;
+    min-height: 0;
+    margin: 0;
+    animation: none;
+  }
+
+
+
+  .review-main-diagram {
+    display: block;
+  }
+
   .review-diagram-plate {
     width: 46mm;
     max-width: 46mm;
@@ -2036,6 +2166,14 @@ input[type="range"]:active::-webkit-slider-thumb {
     box-shadow: none;
     background: #fff;
     border-color: #bbb;
+  }
+
+  .review-var-plate {
+    width: 38mm;
+    max-width: 38mm;
+    padding: 1.5mm;
+    box-shadow: none;
+    background: #fff;
   }
 
   .review-diagram-btn,

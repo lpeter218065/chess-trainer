@@ -22,24 +22,33 @@ export function ReviewPgnPanel({ pgn }: { pgn: string }) {
   };
 
   return (
-    <section className="review-pgn-panel no-print">
-      <header className="review-pgn-head">
+    <details className="review-pgn-panel no-print">
+      <summary className="review-pgn-head">
         <div>
           <h2>{t('review.pgnUpdated')}</h2>
           <p>{t('review.pgnUpdatedHint')}</p>
         </div>
-        <button type="button" className="btn btn-sm" onClick={() => void copy()}>
-          {copied ? t('review.copied') : t('review.copyPgn')}
-        </button>
-      </header>
+        <span className="review-pgn-actions">
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={(e) => {
+              e.preventDefault();
+              void copy();
+            }}
+          >
+            {copied ? t('review.copied') : t('review.copyPgn')}
+          </button>
+        </span>
+      </summary>
       <textarea
         id="review-annotated-pgn"
         className="field review-pgn-field selectable-text"
         readOnly
         value={pgn}
-        rows={10}
+        rows={8}
         aria-label={t('review.pgnUpdated')}
       />
-    </section>
+    </details>
   );
 }

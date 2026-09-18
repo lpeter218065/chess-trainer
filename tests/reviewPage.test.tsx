@@ -55,6 +55,7 @@ describe('ReviewView', () => {
 {"type":"move","ply":1,"san":"e4","nag":"","text":"中心一兵。"}
 {"type":"move","ply":2,"san":"e5","nag":"","text":"对称应着。"}
 {"type":"diagram","ply":2,"caption":"图1"}
+{"type":"variation","ply":2,"intro":"如果 1...c5","lines":[{"label":"1","moves":"c5","text":"西西里。"}]}
 `;
       },
     };
@@ -70,11 +71,23 @@ describe('ReviewView', () => {
     });
     expect(await screen.findByRole('heading', { level: 2, name: '王翼进攻' })).toBeTruthy();
     expect(screen.getByText('本局白方抢攻王翼。')).toBeTruthy();
-    expect(screen.getByText('中心一兵。')).toBeTruthy();
-    expect(screen.getByText('对称应着。')).toBeTruthy();
+    expect(store.getState().ply).toBe(2);
+    const visible = () => document.querySelector('.review-step:not([hidden])');
+    expect(visible()?.textContent).toContain('对称应着。');
+    expect(visible()?.textContent).not.toContain('中心一兵。');
+    expect(visible()?.querySelector('.review-main-diagram')).toBeTruthy();
+    expect(visible()?.querySelector('[data-testid="review-var-board"]')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /上一步/ }));
+    expect(store.getState().ply).toBe(1);
+    expect(visible()?.textContent).toContain('中心一兵。');
+    expect(visible()?.textContent).not.toContain('对称应着。');
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(store.getState().ply).toBe(2);
+    expect(visible()?.textContent).toContain('对称应着。');
     expect(store.getState().document?.blocks.filter((b) => b.type === 'move')).toHaveLength(2);
     const print = vi.spyOn(window, 'print').mockImplementation(() => {});
-    fireEvent.click(screen.getByRole('button', { name: '打印' }));
+    fireEvent.click(screen.getByRole('button', { name: '更多' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '打印' }));
     expect(print).toHaveBeenCalledTimes(1);
     print.mockRestore();
   });

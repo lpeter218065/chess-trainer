@@ -71,6 +71,17 @@ export async function newReviewSession(): Promise<StoreApi<ReviewState>> {
   return store;
 }
 
+export async function saveReviewSessionAs(title: string): Promise<StoreApi<ReviewState>> {
+  const store = await getReviewStore();
+  const gs = useGameSessions.getState();
+  const from = gs.activeReviewId;
+  if (!from) return store;
+  gs.saveReviewSnapshot(from, store.getState().exportSnapshot());
+  const id = gs.saveAsReview(from, title);
+  if (id) await switchReviewSession(id);
+  return store;
+}
+
 export function useReview<T>(store: StoreApi<ReviewState>, selector: (s: ReviewState) => T): T {
   return useStore(store, selector);
 }

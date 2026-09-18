@@ -3,6 +3,7 @@ import { START_FEN } from '../src/chess/pgn';
 import {
   ensureMoveBlocks,
   formatMoveHeading,
+  groupReviewBlocks,
   lastCoveredPly,
   mergeExpandedBlocks,
   mergeReviewDocuments,
@@ -68,6 +69,20 @@ describe('parseReviewOutput', () => {
     const doc = parseReviewOutput('```json\n{"title":"A","overview":"B"}\n```');
     expect(doc.title).toBe('A');
     expect(doc.overview).toBe('B');
+  });
+});
+
+describe('groupReviewBlocks', () => {
+  it('keeps unscoped paragraphs in the lead and groups the rest by ply', () => {
+    const doc = parseReviewOutput(
+      '{"type":"paragraph","text":"开局补充。"}\n{"type":"move","ply":1,"san":"e4","text":"中心。"}\n{"type":"diagram","ply":1}\n{"type":"move","ply":2,"san":"e5","text":"对称。"}\n{"type":"variation","ply":2,"lines":[{"moves":"c5","text":"西西里。"}]}',
+    );
+    const { lead, steps } = groupReviewBlocks(doc.blocks);
+    expect(lead).toHaveLength(1);
+    expect(lead[0]).toMatchObject({ type: 'paragraph', text: '开局补充。' });
+    expect(steps.map((s) => s.ply)).toEqual([1, 2]);
+    expect(steps[0].blocks.map((b) => b.type)).toEqual(['move', 'diagram']);
+    expect(steps[1].blocks.map((b) => b.type)).toEqual(['move', 'variation']);
   });
 });
 

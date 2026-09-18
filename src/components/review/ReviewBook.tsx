@@ -1,30 +1,65 @@
-import { useEffect, useRef } from 'react';
 import { MiniBoard } from '../MiniBoard';
-import { formatCompactScore, formatMoveHeading } from '../../review/document';
+import { formatCompactScore, formatMoveHeading, groupReviewBlocks } from '../../review/document';
+import { playLine } from '../../review/pgnExport';
 import type { AnnotatedMove, ReviewBlock, ReviewDocument, VariationLine } from '../../review/types';
 import { useT } from '../../i18n';
 
-function VariationTree({ lines, depth = 0 }: { lines: VariationLine[]; depth?: number }) {
+function VariationTree({
+  lines,
+  fen,
+  orientation,
+  idPrefix,
+  depth = 0,
+}: {
+  lines: VariationLine[];
+  fen: string;
+  orientation: 'white' | 'black';
+  idPrefix: string;
+  depth?: number;
+}) {
   const t = useT();
   return (
     <ol className={`review-var-list ${depth > 0 ? 'is-nested' : ''}`}>
-      {lines.map((line, i) => (
-        <li key={`${line.label ?? i}-${line.moves}`}>
-          <p>
-            {line.label ? <span className="review-var-label">({line.label})</span> : null}{' '}
-            {line.moves ? <span className="review-var-moves">{line.moves}</span> : null}{' '}
-            <span>{line.text || (i === 0 && !line.moves ? t('review.variation') : '')}</span>
-          </p>
-          {line.children && line.children.length > 0 ? <VariationTree lines={line.children} depth={depth + 1} /> : null}
-        </li>
-      ))}
+      {lines.map((line, i) => {
+        const played = playLine(fen, line.moves);
+        const after = played.sans.length ? played.fen : fen;
+        const childLines = (line.children ?? []).map((child) => {
+          const from = playLine(after, child.moves).sans.length ? after : fen;
+          return { child, from };
+        });
+        return (
+          <li key={`${line.label ?? i}-${line.moves}`}>
+            <p>
+              {line.label ? <span className="review-var-label">({line.label})</span> : null}{' '}
+              {line.moves ? <span className="review-var-moves">{line.moves}</span> : null}{' '}
+              <span>{line.text || (i === 0 && !line.moves ? t('review.variation') : '')}</span>
+            </p>
+            {played.lastMove ? (
+              <figure className="review-var-plate" data-testid="review-var-board">
+                <MiniBoard
+                  fen={played.fen}
+                  orientation={orientation}
+                  lastMove={played.lastMove}
+                  boardId={`${idPrefix}-var-${depth}-${i}`}
+                  className="aspect-square w-full"
+                />
+              </figure>
+            ) : null}
+            {childLines.map(({ child, from }, ci) => (
+              <VariationTree
+                key={`${i}-${ci}`}
+                lines={[child]}
+                fen={from}
+                orientation={orientation}
+                idPrefix={`${idPrefix}-${i}-${ci}`}
+                depth={depth + 1}
+              />
+            ))}
+          </li>
+        );
+      })}
     </ol>
   );
-}
-
-function blockPly(block: ReviewBlock): number | null {
-  if (block.type === 'paragraph') return block.ply ?? null;
-  return block.ply;
 }
 
 export function ReviewBook({
@@ -43,22 +78,17 @@ export function ReviewBook({
   onSelectPly: (ply: number) => void;
 }) {
   const t = useT();
-  const rootRef = useRef<HTMLElement>(null);
   const score = formatCompactScore(startFen, moves);
   const moveByPly = new Map(moves.map((m) => [m.ply, m]));
-  let diagramIndex = 0;
-
-  useEffect(() => {
-    const current = rootRef.current?.querySelector<HTMLElement>('[data-current="true"]');
-    current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [ply]);
-
   if (!document) return null;
 
-  const renderBlock = (block: ReviewBlock, index: number) => {
+  const { lead, steps } = groupReviewBlocks(document.blocks);
+  let diagramIndex = 0;
+
+  const renderBlock = (block: ReviewBlock, index: string) => {
     if (block.type === 'paragraph') {
       return (
-        <p key={`p-${index}`} className="review-para">
+        <p key={index} className="review-para">
           {block.text}
         </p>
       );
@@ -67,16 +97,9 @@ export function ReviewBook({
       const move = moveByPly.get(block.ply);
       const nag = block.nag || move?.nag || '';
       const heading = formatMoveHeading(startFen, block.ply, block.san || move?.san || '', nag);
-      const current = ply === block.ply;
       return (
-        <section
-          key={`m-${block.ply}-${index}`}
-          className={`review-move ${current ? 'is-current' : ''}`}
-          data-current={current ? 'true' : undefined}
-        >
-          <button type="button" className="review-move-head" onClick={() => onSelectPly(block.ply)}>
-            {heading}
-          </button>
+        <section key={index} className="review-move is-current">
+          <h3 className="review-move-head">{heading}</h3>
           <p className="review-move-text">{block.text}</p>
         </section>
       );
@@ -88,7 +111,7 @@ export function ReviewBook({
       const caption = block.caption?.trim() || t('review.diagram', { n: diagramIndex });
       if (!fen) return null;
       return (
-        <figure key={`d-${block.ply}-${index}`} className="review-diagram-plate">
+        <figure key={index} className="review-diagram-plate review-main-diagram">
           <button type="button" className="review-diagram-btn" onClick={() => onSelectPly(block.ply)}>
             <MiniBoard
               fen={fen}
@@ -102,33 +125,61 @@ export function ReviewBook({
         </figure>
       );
     }
+    const from = moveByPly.get(block.ply)?.fenBefore;
     return (
-      <div
-        key={`v-${block.ply}-${index}`}
-        className={`review-variation ${ply === block.ply ? 'is-current' : ''}`}
-        data-current={ply === block.ply ? 'true' : undefined}
-      >
+      <div key={index} className="review-variation">
         {block.intro ? <p className="review-var-intro">{block.intro}</p> : null}
-        <VariationTree lines={block.lines} />
+        {from ? (
+          <VariationTree
+            lines={block.lines}
+            fen={from}
+            orientation={orientation}
+            idPrefix={`var-${block.ply}-${index}`}
+          />
+        ) : (
+          <VariationTree
+            lines={block.lines}
+            fen={startFen}
+            orientation={orientation}
+            idPrefix={`var-${block.ply}-${index}`}
+          />
+        )}
       </div>
     );
   };
 
   return (
-    <article ref={rootRef} className="review-book selectable-text" aria-label={t('review.book')}>
-      {document.title ? <h2 className="review-chapter-title">{document.title}</h2> : null}
-      {score ? (
-        <p className="review-print-score">
-          <span className="review-print-score-label">{t('review.printScore')}</span>
-          {score}
-        </p>
-      ) : null}
-      {document.overview ? <p className="review-overview">{document.overview}</p> : null}
-      {document.blocks.map((block, i) => {
-        const p = blockPly(block);
-        if (p != null && p > moves.length) return null;
-        return renderBlock(block, i);
+    <article id="review-book" className="review-book selectable-text" aria-label={t('review.book')}>
+      <div className="review-lead-card">
+        {document.title ? <h2 className="review-chapter-title">{document.title}</h2> : null}
+        {score ? (
+          <p className="review-print-score">
+            <span className="review-print-score-label">{t('review.printScore')}</span>
+            {score}
+          </p>
+        ) : null}
+        {document.overview ? <p className="review-overview">{document.overview}</p> : null}
+        {lead.map((block, i) => renderBlock(block, `lead-${i}`))}
+        {ply <= 0 ? <p className="review-step-hint no-print">{t('review.atStart')}</p> : null}
+      </div>
+      {steps.map((step) => {
+        const active = ply === step.ply;
+        return (
+          <div
+            key={step.ply}
+            className={`review-step${active ? ' is-active' : ''}`}
+            data-ply={step.ply}
+            hidden={!active}
+          >
+            <div className="review-step-card">
+              {step.blocks.map((block, i) => renderBlock(block, `${step.ply}-${i}`))}
+            </div>
+          </div>
+        );
       })}
+      {ply > 0 && !steps.some((s) => s.ply === ply) ? (
+        <p className="review-step-hint no-print">{t('review.stepEmpty')}</p>
+      ) : null}
     </article>
   );
 }

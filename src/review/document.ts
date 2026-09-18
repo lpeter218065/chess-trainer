@@ -206,6 +206,48 @@ export function mergeReviewDocuments(base: ReviewDocument, extra: ReviewDocument
   };
 }
 
+export function blockPly(block: ReviewBlock): number | null {
+  if (block.type === 'paragraph') return block.ply ?? null;
+  return block.ply;
+}
+
+/** 开局总评与按 ply 分组的逐步解说，供左右联动只显示当前步。 */
+export function groupReviewBlocks(blocks: ReviewBlock[]): {
+  lead: ReviewBlock[];
+  steps: { ply: number; blocks: ReviewBlock[] }[];
+} {
+  const lead: ReviewBlock[] = [];
+  const byPly = new Map<number, ReviewBlock[]>();
+  const order: number[] = [];
+  let started = false;
+  let lastPly = 0;
+  const pushStep = (ply: number, block: ReviewBlock) => {
+    let list = byPly.get(ply);
+    if (!list) {
+      list = [];
+      byPly.set(ply, list);
+      order.push(ply);
+    }
+    list.push(block);
+  };
+  for (const block of blocks) {
+    const ply = blockPly(block);
+    if (!started && block.type === 'paragraph' && (ply == null || ply === 0)) {
+      lead.push(block);
+      continue;
+    }
+    if (ply != null && ply > 0) {
+      started = true;
+      lastPly = ply;
+      pushStep(ply, block);
+      continue;
+    }
+    if (lastPly > 0) pushStep(lastPly, block);
+    else lead.push(block);
+  }
+  return { lead, steps: order.map((ply) => ({ ply, blocks: byPly.get(ply) ?? [] })) };
+}
+
 export function lastCoveredPly(doc: ReviewDocument): number {
   let max = 0;
   for (const block of doc.blocks) {

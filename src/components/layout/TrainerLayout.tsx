@@ -80,9 +80,12 @@ function Segmented({
             disabled={Boolean(t.disabled)}
             tabIndex={selected ? 0 : -1}
             className={`trainer-tab${selected && !t.disabled ? ' is-active' : ''}${t.disabled ? ' is-disabled' : ''}`}
-            onClick={() => {
+            onClick={(e) => {
               if (t.disabled) return;
               onSelect(t.id);
+              // 指针点击后交还焦点：左右方向键是棋谱步进，不该被标签条吃掉。
+              // 键盘激活（click detail === 0）保留焦点，标签漫游仍符合 ARIA。
+              if (e.detail > 0) e.currentTarget.blur();
             }}
             onKeyDown={(e) => {
               const index = tabs.findIndex((tab) => tab.id === t.id);

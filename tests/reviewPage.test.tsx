@@ -130,4 +130,45 @@ describe('ReviewView', () => {
     expect(printCopy?.querySelectorAll('.review-move').length).toBeGreaterThan(1);
     expect(printCopy?.querySelectorAll('.review-move.is-current').length).toBe(0);
   });
+
+  it('hands the arrow keys back to ply stepping after a tab is clicked with a pointer', async () => {
+    const llm: LlmPort = {
+      async *stream() {
+        yield `{"title":"王翼进攻","overview":"本局白方抢攻王翼。"}
+{"type":"move","ply":1,"san":"e4","nag":"","text":"中心一兵。"}
+{"type":"move","ply":2,"san":"e5","nag":"","text":"对称应着。"}
+`;
+      },
+    };
+    const store = createReviewStore(fakeEngine(), llm);
+    render(
+      <MemoryRouter>
+        <ReviewView store={store} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('PGN'), { target: { value: '1. e4 e5' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '开始复盘' }));
+    });
+    const notesTab = await screen.findByRole('tab', { name: '讲解' });
+
+    // 指针点击（detail > 0）后标签让出焦点，方向键回到棋谱步进。
+    // jsdom 的 click 不会自动移焦，先手动聚焦模拟真实浏览器点击后的状态。
+    store.getState().setPly(0);
+    notesTab.focus();
+    expect(document.activeElement).toBe(notesTab);
+    fireEvent.click(notesTab, { detail: 1 });
+    expect(document.activeElement).not.toBe(notesTab);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(store.getState().ply).toBe(1);
+
+    // 键盘激活（detail === 0）保留焦点，标签漫游仍符合 ARIA
+    store.getState().setPly(0);
+    notesTab.focus();
+    fireEvent.click(notesTab, { detail: 0 });
+    expect(document.activeElement).toBe(notesTab);
+    fireEvent.keyDown(notesTab, { key: 'ArrowRight', bubbles: true });
+    expect(store.getState().ply).toBe(0);
+    expect(screen.getByRole('tab', { name: '着法' }).getAttribute('aria-selected')).toBe('true');
+  });
 });

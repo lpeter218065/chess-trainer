@@ -94,4 +94,40 @@ describe('ReviewView', () => {
     expect(print).toHaveBeenCalledTimes(1);
     print.mockRestore();
   });
+
+  it('exposes variation lines to the keyboard and keeps is-current out of the print copy', async () => {
+    const llm: LlmPort = {
+      async *stream() {
+        yield `{"title":"王翼进攻","overview":"本局白方抢攻王翼。"}
+{"type":"move","ply":1,"san":"e4","nag":"","text":"中心一兵。"}
+{"type":"move","ply":2,"san":"e5","nag":"","text":"对称应着。"}
+{"type":"variation","ply":2,"intro":"如果 1...c5","lines":[{"label":"1","moves":"c5","text":"西西里。"}]}
+`;
+      },
+    };
+    const store = createReviewStore(fakeEngine(), llm);
+    render(
+      <MemoryRouter>
+        <ReviewView store={store} />
+      </MemoryRouter>,
+    );
+    fireEvent.change(screen.getByLabelText('PGN'), { target: { value: '1. e4 e5' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '开始复盘' }));
+    });
+    await screen.findByRole('tab', { name: '讲解' });
+
+    const trigger = document.querySelector<HTMLButtonElement>(
+      '#review-book .review-step:not([hidden]) .review-var-trigger',
+    );
+    expect(trigger).toBeTruthy();
+    expect(trigger?.tagName).toBe('BUTTON');
+    trigger!.focus();
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger!.closest('.review-var-item')).toBeTruthy();
+
+    const printCopy = document.querySelector('.review-print-full');
+    expect(printCopy?.querySelectorAll('.review-move').length).toBeGreaterThan(1);
+    expect(printCopy?.querySelectorAll('.review-move.is-current').length).toBe(0);
+  });
 });

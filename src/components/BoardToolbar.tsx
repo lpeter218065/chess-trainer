@@ -35,7 +35,7 @@ export function BoardToolbar({ children }: { children: ReactNode }) {
 export function BoardStatus({ children, error }: { children: ReactNode; error?: string | null }) {
   return (
     <div className="board-status max-h-20 min-w-0 overflow-y-auto">
-      {error ? <p role="alert" className="text-danger">{error}</p> : <p role="status">{children}</p>}
+      {error ? <p role="alert" className="text-danger">{error}</p> : <p role="status" aria-live="polite">{children}</p>}
     </div>
   );
 }

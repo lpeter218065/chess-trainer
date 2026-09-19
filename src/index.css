@@ -1958,6 +1958,19 @@ input[type="range"]:active::-webkit-slider-thumb {
 .review-var-item:focus-within {
   background: color-mix(in srgb, var(--color-select) 55%, transparent);
 }
+/* 变化行用按钮承载，键盘可聚焦，聚焦时与 hover 一样高亮棋盘 */
+.review-var-trigger {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 .review-var-list {
   margin: 0;
   padding-left: 1.15rem;

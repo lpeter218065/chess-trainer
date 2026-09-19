@@ -43,11 +43,16 @@ function VariationTree({
             onMouseLeave={() => onFocus?.(null)}
             onClick={focusLine}
           >
-            <p>
+            <button
+              type="button"
+              className="review-var-trigger"
+              onFocus={focusLine}
+              onBlur={() => onFocus?.(null)}
+            >
               {line.label ? <span className="review-var-label">({line.label})</span> : null}{' '}
               {line.moves ? <span className="review-var-moves">{line.moves}</span> : null}{' '}
               <span>{line.text || (i === 0 && !line.moves ? t('review.variation') : '')}</span>
-            </p>
+            </button>
             {played.lastMove ? (
               <figure className="review-var-plate" data-testid="review-var-board">
                 <MiniBoard
@@ -118,7 +123,7 @@ export function ReviewBook({
       const nag = block.nag || move?.nag || '';
       const heading = formatMoveHeading(startFen, block.ply, block.san || move?.san || '', nag);
       return (
-        <section key={index} className="review-move is-current">
+        <section key={index} className={`review-move${mode === 'steps' ? ' is-current' : ''}`}>
           <h3 className="review-move-head">{heading}</h3>
           <p className="review-move-text">{block.text}</p>
         </section>

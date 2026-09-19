@@ -339,10 +339,10 @@ export function ReviewView({ store }: { store: StoreApi<ReviewState> }) {
           </div>
         }
         leftPanel={
-          moves.length > 0 ? (
-            <div className="flex h-full min-h-0 flex-col overflow-hidden p-2">
-              <h2 className="mb-2 shrink-0 text-sm font-semibold text-ink">{t('explore.moves')}</h2>
-              <div className="min-h-0 flex-1 overflow-auto">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden p-2">
+            <h2 className="mb-2 shrink-0 text-sm font-semibold text-ink">{t('explore.moves')}</h2>
+            <div className="min-h-0 flex-1 overflow-auto">
+              {moves.length > 0 ? (
                 <MoveList
                   history={moves.map((m) => m.san)}
                   startMoveNumber={startMoveNumber}
@@ -351,9 +351,11 @@ export function ReviewView({ store }: { store: StoreApi<ReviewState> }) {
                   onSelectPly={(next) => store.getState().setPly(next)}
                   qualities={status === 'analyzing' ? undefined : qualities}
                 />
-              </div>
+              ) : (
+                <p className="text-xs text-muted">{t('review.noMovesYet')}</p>
+              )}
             </div>
-          ) : undefined
+          </div>
         }
         panels={
           showComposer
@@ -362,8 +364,8 @@ export function ReviewView({ store }: { store: StoreApi<ReviewState> }) {
                 { id: 'moves', label: t('explore.moves'), content: scorePanel },
               ]
             : [
-                { id: 'notes', label: t('trainer.commentary'), content: notes },
                 { id: 'summary', label: t('review.summary'), content: summaryPanel },
+                { id: 'notes', label: t('trainer.commentary'), content: notes },
                 { id: 'moves', label: t('explore.moves'), content: scorePanel },
               ]
         }

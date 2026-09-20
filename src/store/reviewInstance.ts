@@ -13,9 +13,15 @@ function attachReviewAutosave(store: StoreApi<ReviewState>) {
   const debouncer = createDebouncer(400);
   let lastJson = '';
   store.subscribe(() => {
+    // 排入时就记下这份改动属于哪个会话。防抖的 400ms 里用户可能切走，而
+    // switchReviewSession 会先改 activeReviewId、再 await 读取快照，期间 store
+    // 仍是旧会话的内容——那时落盘就会把旧会话写进新会话。
+    const scheduledFor = useGameSessions.getState().activeReviewId;
     debouncer.schedule(() => {
       const gs = useGameSessions.getState();
       const id = gs.activeReviewId ?? gs.ensureReviewActive();
+      // 已经切走：这份快照属于旧会话，而 switchReviewSession 在切换前已显式存过它，丢弃即可。
+      if (scheduledFor && scheduledFor !== id) return;
       const snap = store.getState().exportSnapshot();
       const json = JSON.stringify(snap);
       if (json === lastJson) return;

@@ -3,7 +3,7 @@ import { Chess } from 'chess.js';
 import { createSessionStore, type LlmPort } from '../src/store/session';
 import type { EnginePort } from '../src/engine/engineService';
 import { lessonById } from '../src/lessons';
-import { difficultyById } from '../src/engine/difficulty';
+import { difficultyById, GRADE_DEPTH, GRADE_MOVETIME_MS } from '../src/engine/difficulty';
 import { openingDrillById, OPENING_DRILLS } from '../src/lessons/openingDrills';
 import { drillToLesson } from '../src/lessons/drillLesson';
 
@@ -321,6 +321,45 @@ describe('session store', () => {
     await store.getState().whenIdle();
     expect(store.getState().phase).toBe('userTurn');
     expect(store.getState().analysisBefore?.fen).toBe(lesson.startFen);
+  });
+
+  it('只为评分的分析（走子后局面、终局局面）用浅层限制，prepareTurn 仍用满额限制', async () => {
+    const base = fakeEngine();
+    const calls: { fen: string; multiPv: number; options: Parameters<EnginePort['analyze']>[2] }[] = [];
+    const engine: EnginePort = {
+      ...base,
+      analyze(fen, multiPv, options) {
+        calls.push({ fen, multiPv, options });
+        return base.analyze(fen, multiPv, options);
+      },
+    };
+    const store = createSessionStore({ llmDebounceMs: 0, engine, llm: fakeLlm() });
+    const short = { ...lesson, stop: { kind: 'plies', count: 2 } as const };
+    await store.getState().start(short, diff);
+    await store.getState().whenIdle();
+    const quick = { depth: GRADE_DEPTH, moveTimeMs: GRADE_MOVETIME_MS };
+
+    expect(await store.getState().playUserMove('d2', 'd3')).toBe(true);
+    await store.getState().whenIdle();
+    const afterD3 = new Chess(lesson.startFen);
+    afterD3.move('d3');
+    const afterUserEval = calls.find((c) => c.fen === afterD3.fen());
+    expect(afterUserEval).toMatchObject({ multiPv: 1, options: quick });
+
+    const m = new Chess(store.getState().fen).moves({ verbose: true }).find((x) => x.piece === 'p')!;
+    expect(await store.getState().playUserMove(m.from, m.to)).toBe(true);
+    await store.getState().whenIdle();
+    expect(store.getState().phase).toBe('finished');
+    const finalEval = calls[calls.length - 1];
+    expect(finalEval.fen).toBe(store.getState().fen);
+    expect(finalEval).toMatchObject({ multiPv: 1, options: quick });
+
+    const prepareTurnCalls = calls.filter((c) => c.multiPv === 3);
+    expect(prepareTurnCalls.length).toBeGreaterThan(0);
+    for (const c of prepareTurnCalls) {
+      expect(c.options?.depth).toBeUndefined();
+      expect(c.options?.moveTimeMs).toBeUndefined();
+    }
   });
 
   it('走子命中走子前 MultiPV 的某条线时，直接复用该线分数，少跑一次引擎', async () => {

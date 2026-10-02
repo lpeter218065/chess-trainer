@@ -2,6 +2,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { Chess } from 'chess.js';
 import type { EnginePort } from '../engine/engineService';
 import type { Analysis } from '../engine/stockfishWorker';
+import { GRADE_DEPTH, GRADE_MOVETIME_MS } from '../engine/difficulty';
 import type { LlmPort } from './session';
 import type { ChatMessage } from '../llm/client';
 import {
@@ -89,6 +90,9 @@ export interface ExploreState {
   exportSnapshot(): ExploreSnapshot;
   hydrateSnapshot(snap: ExploreSnapshot): void;
 }
+
+/** Background grading only needs one score: shallow limits keep it from hogging an analysis slot. */
+const GRADE_OPTIONS = { priority: 'background', depth: GRADE_DEPTH, moveTimeMs: GRADE_MOVETIME_MS } as const;
 
 function whiteEval(analysis: Analysis): number {
   const line = analysis.lines.find((l) => l.multipv === 1) ?? analysis.lines[0];
@@ -575,7 +579,7 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
         // Publish the current position first; historical move grades still finish in the background.
         void (async () => {
           try {
-            const before = analysisBefore ?? (await engine.analyze(fen, 3, { priority: 'background' }));
+            const before = analysisBefore ?? (await engine.analyze(fen, 3, GRADE_OPTIONS));
             const knownCp = evalAfterFromLines(before, userUci);
             const evalAfterWhite =
               knownCp !== null
@@ -583,8 +587,8 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
                   ? knownCp
                   : -knownCp
                 : whiteEval(await (tipFen === fenAfter
-                  ? displayedAnalysis.catch(() => engine.analyze(fenAfter, 1, { priority: 'background' }))
-                  : engine.analyze(fenAfter, 1, { priority: 'background' })));
+                  ? displayedAnalysis.catch(() => engine.analyze(fenAfter, 1, GRADE_OPTIONS))
+                  : engine.analyze(fenAfter, 1, GRADE_OPTIONS)));
             const quality = classifyMove({
               evalBefore: sideEval(whiteEval(before), movingSide),
               evalAfter: sideEval(evalAfterWhite, movingSide),

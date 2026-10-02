@@ -4,7 +4,7 @@ import type { Lesson } from '../lessons/schema';
 import { PRINCIPLES, principleById, type Principle } from '../lessons/principles';
 import type { EnginePort, Analysis } from '../engine/engineService';
 import type { Difficulty, DifficultyId } from '../engine/difficulty';
-import { difficultyById } from '../engine/difficulty';
+import { difficultyById, GRADE_DEPTH, GRADE_MOVETIME_MS } from '../engine/difficulty';
 import type { LessonSnapshot } from './gameSessions';
 import type { ChatMessage } from '../llm/client';
 import { chooseAngle, type Angle } from '../llm/angles';
@@ -20,6 +20,9 @@ import { isFinished, judgeResult, type GameResult, type Outcome } from '../chess
 import { extractFeatures } from '../chess/features';
 import { pickBookReply } from '../chess/openingBook';
 import { tl } from '../i18n';
+
+/** 只为评分取一个分数的分析：浅层限制，不拖慢引擎应手 / 结算 */
+const GRADE_LIMITS = { depth: GRADE_DEPTH, moveTimeMs: GRADE_MOVETIME_MS };
 
 /** 并发 lesson boot（start / hydrate）时只认最后一次 */
 let lessonBootSerial = 0;
@@ -284,7 +287,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
       else if (gameResult === 'playerLoss') finalEvalCp = -10000;
       else if (gameResult === 'draw') finalEvalCp = 0;
       else {
-        try { finalEvalCp = playerCp(await deps.engine.analyze(chess.fen(), 1), lesson); } catch { /* 用上一回合评估 */ }
+        try { finalEvalCp = playerCp(await deps.engine.analyze(chess.fen(), 1, GRADE_LIMITS), lesson); } catch { /* 用上一回合评估 */ }
       }
       const result = judgeResult({
         lesson, finalFen: chess.fen(), finalEvalCp, evalHistory: s.evalHistory,
@@ -368,7 +371,7 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
             const [evalAfterCp, em] = await Promise.all([
               knownCp !== null
                 ? Promise.resolve(toPerspective(knownCp, sideToMove(fenAfterUser), lesson.playerColor))
-                : deps.engine.analyze(fenAfterUser, 1).then((a) => playerCp(a, lesson)),
+                : deps.engine.analyze(fenAfterUser, 1, GRADE_LIMITS).then((a) => playerCp(a, lesson)),
               applyOpponentMove(chess, s.difficulty!),
             ]);
             evalAfter = evalAfterCp;

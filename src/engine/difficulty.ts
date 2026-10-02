@@ -34,3 +34,7 @@ export function openingOpponentById(id: string): Difficulty {
 /** analyst 用的固定分析深度与时间封顶 */
 export const ANALYSIS_DEPTH = 16;
 export const ANALYSIS_MOVETIME_MS = 1500;
+
+/** 只为着法评分取一个分数的分析用浅层限制（与复盘评分同深度） */
+export const GRADE_DEPTH = 12;
+export const GRADE_MOVETIME_MS = 500;

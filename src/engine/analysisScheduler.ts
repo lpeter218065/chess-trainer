@@ -49,11 +49,22 @@ function disposedError(): Error {
   return new Error('Analysis scheduler has been disposed');
 }
 
-/** Serializes complete analysis calls while allowing current positions to jump queued background work. */
-export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler {
+/** One runner (worker) and the request it is currently running, if any. */
+type Slot = {
+  run: AnalysisRunner;
+  active: PendingRequest | null;
+};
+
+/**
+ * Runs complete analysis calls on one or more runner slots while allowing current
+ * positions to jump queued background work. Each slot runs one request at a time;
+ * with several runners the next request goes to the first idle slot in array order.
+ */
+export function createAnalysisScheduler(runners: AnalysisRunner | AnalysisRunner[]): AnalysisScheduler {
+  const slots: Slot[] = (Array.isArray(runners) ? runners : [runners]).map((run) => ({ run, active: null }));
+  if (slots.length === 0) throw new Error('createAnalysisScheduler needs at least one runner');
   const foreground: PendingRequest[] = [];
   const background: PendingRequest[] = [];
-  let active: PendingRequest | null = null;
   let disposed = false;
 
   const removePending = (request: PendingRequest) => {
@@ -99,23 +110,22 @@ export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler 
     request.controller?.abort();
   };
 
-  drain = () => {
-    if (disposed || active) return;
-    const request = foreground.shift() ?? background.shift();
-    if (!request) return;
-    if (request.settled) {
-      drain();
-      return;
+  const nextPending = (): PendingRequest | undefined => {
+    for (;;) {
+      const request = foreground.shift() ?? background.shift();
+      if (!request || !request.settled) return request;
     }
+  };
 
+  const start = (slot: Slot, request: PendingRequest) => {
     request.started = true;
     request.controller = new AbortController();
-    active = request;
+    slot.active = request;
     let operation: Promise<Analysis>;
     try {
       // `run` is one complete operation: its internal option update and search
       // remain together before another request can acquire the worker slot.
-      operation = Promise.resolve(run(request.fen, request.multiPv, {
+      operation = Promise.resolve(slot.run(request.fen, request.multiPv, {
         depth: request.depth,
         moveTimeMs: request.moveTimeMs,
         signal: request.controller.signal,
@@ -130,9 +140,19 @@ export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler 
         (error: unknown) => rejectRequest(request, error),
       )
       .finally(() => {
-        if (active === request) active = null;
+        if (slot.active === request) slot.active = null;
         if (!disposed) drain();
       });
+  };
+
+  drain = () => {
+    while (!disposed) {
+      const slot = slots.find((candidate) => !candidate.active);
+      if (!slot) return;
+      const request = nextPending();
+      if (!request) return;
+      start(slot, request);
+    }
   };
 
   const analyze = (fen: string, multiPv: number, options?: AnalysisOptions): Promise<Analysis> => {
@@ -180,9 +200,10 @@ export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler 
     foreground.length = 0;
     background.length = 0;
     for (const request of queued) rejectRequest(request, disposedError());
-    if (active) {
-      rejectRequest(active, disposedError());
-      active.controller?.abort();
+    for (const slot of slots) {
+      if (!slot.active) continue;
+      rejectRequest(slot.active, disposedError());
+      slot.active.controller?.abort();
     }
   };
 

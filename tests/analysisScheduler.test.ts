@@ -259,3 +259,122 @@ describe('createAnalysisScheduler', () => {
     await expect(scheduler.analyze('after-dispose', 1)).rejects.toThrow('disposed');
   });
 });
+
+describe('createAnalysisScheduler with several runners', () => {
+  type Call = { slot: number; fen: string; signal: AbortSignal; operation: Deferred<Analysis> };
+
+  function slots(count: number) {
+    const calls: Call[] = [];
+    const runners: AnalysisRunner[] = Array.from({ length: count }, (_, slot) => (fen, _multiPv, limits) => {
+      const operation = deferred<Analysis>();
+      calls.push({ slot, fen, signal: limits!.signal!, operation });
+      return operation.promise;
+    });
+    const started = () => calls.map(({ slot, fen }) => `${slot}:${fen}`);
+    return { calls, runners, started };
+  }
+
+  it.each([0, 1])('runs two foreground requests at once and the third when slot %i settles', async (settling) => {
+    const { calls, runners, started } = slots(2);
+    const scheduler = createAnalysisScheduler(runners);
+    const one = scheduler.analyze('one', 1);
+    const two = scheduler.analyze('two', 1);
+    const three = scheduler.analyze('three', 1);
+    expect(started()).toEqual(['0:one', '1:two']);
+
+    calls[settling].operation.resolve(analysis(calls[settling].fen));
+    await flush();
+    expect(started()).toEqual(['0:one', '1:two', `${settling}:three`]);
+
+    calls[1 - settling].operation.resolve(analysis(calls[1 - settling].fen));
+    calls[2].operation.resolve(analysis('three'));
+    await expect(Promise.all([one, two, three])).resolves.toMatchObject([
+      { fen: 'one' },
+      { fen: 'two' },
+      { fen: 'three' },
+    ]);
+    scheduler.dispose();
+  });
+
+  it('gives a freed slot the next foreground request before waiting background work', async () => {
+    const { calls, runners, started } = slots(2);
+    const scheduler = createAnalysisScheduler(runners);
+    const requests = [
+      scheduler.analyze('bg-1', 1, { priority: 'background' }),
+      scheduler.analyze('bg-2', 1, { priority: 'background' }),
+      scheduler.analyze('bg-3', 1, { priority: 'background' }),
+      scheduler.analyze('current', 1),
+    ];
+    expect(started()).toEqual(['0:bg-1', '1:bg-2']);
+    calls[1].operation.resolve(analysis('bg-2'));
+    await flush();
+    expect(started()).toEqual(['0:bg-1', '1:bg-2', '1:current']);
+    calls[0].operation.resolve(analysis('bg-1'));
+    await flush();
+    expect(started()).toEqual(['0:bg-1', '1:bg-2', '1:current', '0:bg-3']);
+    calls[2].operation.resolve(analysis('current'));
+    calls[3].operation.resolve(analysis('bg-3'));
+    await Promise.all(requests);
+    scheduler.dispose();
+  });
+
+  it('still serialises with a single runner given as an array', async () => {
+    const { calls, runners, started } = slots(1);
+    const scheduler = createAnalysisScheduler(runners);
+    const first = scheduler.analyze('first', 1);
+    const second = scheduler.analyze('second', 1);
+    expect(started()).toEqual(['0:first']);
+    calls[0].operation.resolve(analysis('first'));
+    await flush();
+    expect(started()).toEqual(['0:first', '0:second']);
+    calls[1].operation.resolve(analysis('second'));
+    await expect(first).resolves.toMatchObject({ fen: 'first' });
+    await expect(second).resolves.toMatchObject({ fen: 'second' });
+    scheduler.dispose();
+  });
+
+  it('keeps an aborted slot occupied until its runner settles while the other slot keeps working', async () => {
+    const { calls, runners, started } = slots(2);
+    const scheduler = createAnalysisScheduler(runners);
+    const controller = new AbortController();
+    const stale = scheduler.analyze('stale', 1, { signal: controller.signal });
+    const other = scheduler.analyze('other', 1);
+    const next = scheduler.analyze('next', 1);
+    controller.abort();
+    await expect(stale).rejects.toMatchObject({ name: 'AbortError' });
+    expect(calls[0].signal.aborted).toBe(true);
+    expect(calls[1].signal.aborted).toBe(false);
+    await flush();
+    expect(started()).toEqual(['0:stale', '1:other']);
+
+    calls[0].operation.reject(new Error('no bestmove'));
+    await flush();
+    expect(started()).toEqual(['0:stale', '1:other', '0:next']);
+    calls[1].operation.resolve(analysis('other'));
+    calls[2].operation.resolve(analysis('next'));
+    await expect(other).resolves.toMatchObject({ fen: 'other' });
+    await expect(next).resolves.toMatchObject({ fen: 'next' });
+    scheduler.dispose();
+  });
+
+  it('aborts every active slot on dispose', async () => {
+    const { calls, runners, started } = slots(2);
+    const scheduler = createAnalysisScheduler(runners);
+    const one = scheduler.analyze('one', 1);
+    const two = scheduler.analyze('two', 1);
+    const queued = scheduler.analyze('queued', 1);
+    scheduler.dispose();
+    expect(calls.map((call) => call.signal.aborted)).toEqual([true, true]);
+    await expect(one).rejects.toThrow('disposed');
+    await expect(two).rejects.toThrow('disposed');
+    await expect(queued).rejects.toThrow('disposed');
+    for (const call of calls) call.operation.reject(new Error('terminated'));
+    await flush();
+    expect(started()).toEqual(['0:one', '1:two']);
+  });
+
+  it('rejects an empty runner list', () => {
+    expect(() => createAnalysisScheduler([])).toThrow();
+  });
+});
+

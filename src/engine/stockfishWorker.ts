@@ -14,6 +14,8 @@ export class StockfishEngine {
   private worker: Worker;
   private queue: Promise<unknown> = Promise.resolve();
   private current: Job | null = null;
+  /** 已被引擎确认（isready → readyok）的 UCI 选项值，用于跳过重复的 setoption 往返 */
+  private applied = new Map<string, string | number>();
 
   constructor(workerUrl: string) {
     this.worker = new Worker(workerUrl);
@@ -32,13 +34,30 @@ export class StockfishEngine {
     }
   }
 
-  /** 发送命令并等待终止行（readyok/uciok 或 bestmove） */
-  private run(cmds: string[], untilBestMove: boolean): Promise<string[]> {
+  /**
+   * 发送命令并等待终止行（readyok/uciok 或 bestmove）。
+   * cmds 可为函数：轮到该任务执行时才求值（基于此刻的引擎状态）；返回空数组则不发送、直接完成。
+   * onDone 在终止行到达时同步调用，早于队列中下一条命令。
+   */
+  private run(cmds: string[] | (() => string[]), untilBestMove: boolean, onDone?: () => void): Promise<string[]> {
     const p = this.queue.then(
       () =>
         new Promise<string[]>((resolve, reject) => {
-          this.current = { resolve, reject, untilBestMove, lines: [] };
-          for (const c of cmds) this.worker.postMessage(c);
+          const list = typeof cmds === 'function' ? cmds() : cmds;
+          if (list.length === 0) {
+            resolve([]);
+            return;
+          }
+          this.current = {
+            resolve: (lines) => {
+              onDone?.();
+              resolve(lines);
+            },
+            reject,
+            untilBestMove,
+            lines: [],
+          };
+          for (const c of list) this.worker.postMessage(c);
         }),
     );
     this.queue = p.catch(() => undefined);
@@ -46,13 +65,32 @@ export class StockfishEngine {
   }
 
   async init(): Promise<void> {
-    await this.run(['uci'], false);
+    // 新的 uci 握手：引擎选项回到默认值，缓存作废
+    await this.run(() => {
+      this.applied.clear();
+      return ['uci'];
+    }, false);
     await this.run(['isready'], false);
   }
 
+  /**
+   * 只发送与已生效值不同的选项（外加 isready）；全部未变则什么也不发。
+   * 差异在轮到该任务执行时计算，因此并发调用也按队列顺序得到正确结果；
+   * 收到 readyok 后才记入缓存，失败时不记录，下次会重发。
+   */
   async setOptions(opts: Record<string, string | number>): Promise<void> {
-    const cmds = Object.entries(opts).map(([k, v]) => `setoption name ${k} value ${v}`);
-    await this.run([...cmds, 'isready'], false);
+    let changed: [string, string | number][] = [];
+    await this.run(
+      () => {
+        changed = Object.entries(opts).filter(([k, v]) => this.applied.get(k) !== v);
+        if (changed.length === 0) return [];
+        return [...changed.map(([k, v]) => `setoption name ${k} value ${v}`), 'isready'];
+      },
+      false,
+      () => {
+        for (const [k, v] of changed) this.applied.set(k, v);
+      },
+    );
   }
 
   async newGame(): Promise<void> {

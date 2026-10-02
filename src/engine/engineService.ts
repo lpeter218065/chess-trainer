@@ -26,14 +26,11 @@ export async function createEngineService(workerUrl: string): Promise<EnginePort
       limits?.moveTimeMs ?? ANALYSIS_MOVETIME_MS,
     ),
   );
-  let lastSkill = -1;
   return {
     analyze: scheduler.analyze,
     async opponentMove(fen, difficulty) {
-      if (difficulty.skillLevel !== lastSkill) {
-        await opponent.setOptions({ 'Skill Level': difficulty.skillLevel });
-        lastSkill = difficulty.skillLevel;
-      }
+      // StockfishEngine 缓存已生效的选项，Skill Level 未变时不会产生往返
+      await opponent.setOptions({ 'Skill Level': difficulty.skillLevel });
       return opponent.bestMove(fen, difficulty.depth, difficulty.moveTimeMs);
     },
     dispose() {

@@ -229,6 +229,7 @@ export const chrome = {
   'explore.import': { zh: '导入', en: 'Import' },
   'explore.pgnPlaceholder': { zh: '粘贴 PGN，例如：\n1. e4 e5 2. Nf3 Nc6 3. Bb5', en: 'Paste PGN, e.g.\n1. e4 e5 2. Nf3 Nc6 3. Bb5' },
   'explore.analyzingPlay': { zh: '引擎分析中，可继续走棋', en: 'Engine analyzing — you can still move' },
+  'explore.analyzingDepth': { zh: '（深度 {n}）', en: ' (depth {n})' },
   'explore.liveHint': { zh: '点子或拖子均可 · 走子后自动分析', en: 'Tap or drag · analysis runs after each move' },
   'explore.reviewHint': { zh: '回看中 · 走子将进入变着', en: 'Reviewing · a move starts a variation' },
   'explore.forceSession': { zh: '分叉无关：强制新开本局面的 GPT session', en: 'Force a new GPT session for this position' },

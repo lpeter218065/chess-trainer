@@ -8,12 +8,23 @@ export interface Analysis {
   bestMove: string;
 }
 
+/** 进度回调的最低深度：更浅的迭代转瞬即逝且不可靠，不值得刷新界面 */
+export const PROGRESS_MIN_DEPTH = 6;
+
 type Job = {
   resolve: (lines: string[]) => void;
   reject: (e: Error) => void;
   untilBestMove: boolean;
   lines: string[];
+  /** 设置后每一行都交给它；info 行不再存入 lines（只保留 bestmove 等非 info 行） */
+  onLine?: (line: string) => void;
   stopSent?: boolean;
+};
+
+type RunOptions = {
+  /** 终止行到达时同步调用，早于队列中下一条命令 */
+  onDone?: () => void;
+  onLine?: (line: string) => void;
 };
 
 /** 单个 Stockfish Worker 的 Promise 封装。命令串行执行。 */
@@ -33,7 +44,12 @@ export class StockfishEngine {
   private onLine(line: string) {
     const job = this.current;
     if (!job) return;
-    job.lines.push(line);
+    if (job.onLine) {
+      job.onLine(line);
+      if (!line.startsWith('info')) job.lines.push(line);
+    } else {
+      job.lines.push(line);
+    }
     const done = job.untilBestMove ? line.startsWith('bestmove') : line === 'readyok' || line === 'uciok';
     if (done) {
       this.current = null;
@@ -44,9 +60,10 @@ export class StockfishEngine {
   /**
    * 发送命令并等待终止行（readyok/uciok 或 bestmove）。
    * cmds 可为函数：轮到该任务执行时才求值（基于此刻的引擎状态）；返回空数组则不发送、直接完成。
-   * onDone 在终止行到达时同步调用，早于队列中下一条命令。
+   * onDone 在终止行到达时同步调用，早于队列中下一条命令；onLine 逐行接收输出（见 Job.onLine）。
    */
-  private run(cmds: string[] | (() => string[]), untilBestMove: boolean, onDone?: () => void): Promise<string[]> {
+  private run(cmds: string[] | (() => string[]), untilBestMove: boolean, opts: RunOptions = {}): Promise<string[]> {
+    const { onDone, onLine } = opts;
     const p = this.queue.then(
       () =>
         new Promise<string[]>((resolve, reject) => {
@@ -63,6 +80,7 @@ export class StockfishEngine {
             reject,
             untilBestMove,
             lines: [],
+            onLine,
           };
           for (const c of list) this.worker.postMessage(c);
         }),
@@ -94,8 +112,10 @@ export class StockfishEngine {
         return [...changed.map(([k, v]) => `setoption name ${k} value ${v}`), 'isready'];
       },
       false,
-      () => {
-        for (const [k, v] of changed) this.applied.set(k, v);
+      {
+        onDone: () => {
+          for (const [k, v] of changed) this.applied.set(k, v);
+        },
       },
     );
   }
@@ -107,6 +127,10 @@ export class StockfishEngine {
   /**
    * signal 被 abort 时：若本次的 go 正在进行则发送 stop（只停自己的搜索，不影响队列里其他任务）；
    * 若 go 尚未发出（例如还在等 setoption 的 readyok），则不再发送 position/go，直接以 AbortError 拒绝。
+   *
+   * info 行边到边解析（每个 multipv 保留最深的一条）。给了 onProgress 时，每完成一层迭代
+   * （收到该深度最后一条 PV，即 multipv === multiPv）且深度 ≥ PROGRESS_MIN_DEPTH、比上次回报更深，
+   * 就回报一次当前的部分结果；bestmove 之后或被取消后不再回报。onProgress 抛错不影响搜索。
    */
   async analyze(
     fen: string,
@@ -114,7 +138,33 @@ export class StockfishEngine {
     multiPv: number,
     moveTimeMs?: number,
     signal?: AbortSignal,
+    onProgress?: (partial: Analysis) => void,
   ): Promise<Analysis> {
+    const byPv = new Map<number, InfoLine>();
+    const sortedLines = () => [...byPv.values()].sort((a, b) => a.multipv - b.multipv);
+    let finished = false;
+    let lastProgressDepth = 0;
+    const onLine = (line: string) => {
+      if (finished) return;
+      if (line.startsWith('bestmove')) {
+        finished = true;
+        return;
+      }
+      const info = parseInfoLine(line);
+      if (!info) return;
+      const prev = byPv.get(info.multipv);
+      if (!prev || prev.depth <= info.depth) byPv.set(info.multipv, info);
+      if (!onProgress || signal?.aborted) return;
+      const completesDepth = multiPv === 1 || info.multipv === multiPv;
+      const top = byPv.get(1);
+      if (!completesDepth || info.depth < PROGRESS_MIN_DEPTH || info.depth <= lastProgressDepth || !top) return;
+      lastProgressDepth = info.depth;
+      try {
+        onProgress({ fen, lines: sortedLines(), bestMove: top.pv[0] });
+      } catch {
+        // 进度只是锦上添花：回调出错不能打断搜索
+      }
+    };
     let searching = false;
     const onAbort = () => {
       if (searching) this.stop();
@@ -133,22 +183,21 @@ export class StockfishEngine {
           return [`position fen ${fen}`, go];
         },
         true,
-        () => {
-          searching = false;
+        {
+          onDone: () => {
+            searching = false;
+          },
+          onLine,
         },
       );
     } finally {
       searching = false;
+      finished = true;
       signal?.removeEventListener('abort', onAbort);
-    }
-    const byPv = new Map<number, InfoLine>();
-    for (const l of lines) {
-      const info = parseInfoLine(l);
-      if (info && (!byPv.has(info.multipv) || byPv.get(info.multipv)!.depth <= info.depth)) byPv.set(info.multipv, info);
     }
     const bestMove = lines.map(parseBestMove).find((m): m is string => m !== null);
     if (!bestMove) throw new Error(tl('error.engineNoBestmoveOver'));
-    return { fen, lines: [...byPv.values()].sort((a, b) => a.multipv - b.multipv), bestMove };
+    return { fen, lines: sortedLines(), bestMove };
   }
 
   async bestMove(fen: string, depth: number, moveTimeMs?: number): Promise<string> {

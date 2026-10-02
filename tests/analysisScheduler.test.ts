@@ -260,6 +260,71 @@ describe('createAnalysisScheduler', () => {
   });
 });
 
+describe('createAnalysisScheduler progress', () => {
+  type Report = (partial: Analysis) => void;
+
+  function progressHarness() {
+    const reports: (Report | undefined)[] = [];
+    const operations: Deferred<Analysis>[] = [];
+    const scheduler = createAnalysisScheduler((_fen, _multiPv, limits) => {
+      reports.push(limits?.onProgress);
+      const operation = deferred<Analysis>();
+      operations.push(operation);
+      return operation.promise;
+    });
+    return { reports, operations, scheduler };
+  }
+
+  it('forwards progress while the request is running and drops it once resolved', async () => {
+    const { reports, operations, scheduler } = progressHarness();
+    const seen: string[] = [];
+    const request = scheduler.analyze('pos', 3, { onProgress: (p) => seen.push(p.bestMove) });
+    reports[0]!({ fen: 'pos', bestMove: 'd2d4', lines: [] });
+    reports[0]!({ fen: 'pos', bestMove: 'e2e4', lines: [] });
+    expect(seen).toEqual(['d2d4', 'e2e4']);
+
+    operations[0].resolve(analysis('pos'));
+    await expect(request).resolves.toMatchObject({ fen: 'pos' });
+    reports[0]!({ fen: 'pos', bestMove: 'g1f3', lines: [] });
+    expect(seen).toEqual(['d2d4', 'e2e4']);
+    scheduler.dispose();
+  });
+
+  it('drops progress after the caller aborts, while the stopped runner is still settling', async () => {
+    const { reports, operations, scheduler } = progressHarness();
+    const seen: string[] = [];
+    const controller = new AbortController();
+    const request = scheduler.analyze('pos', 3, { signal: controller.signal, onProgress: (p) => seen.push(p.bestMove) });
+    reports[0]!({ fen: 'pos', bestMove: 'd2d4', lines: [] });
+    controller.abort();
+    await expect(request).rejects.toMatchObject({ name: 'AbortError' });
+    reports[0]!({ fen: 'pos', bestMove: 'e2e4', lines: [] });
+    expect(seen).toEqual(['d2d4']);
+    operations[0].resolve(analysis('pos'));
+    await flush();
+    scheduler.dispose();
+  });
+
+  it('drops progress after dispose', async () => {
+    const { reports, operations, scheduler } = progressHarness();
+    const seen: string[] = [];
+    const request = scheduler.analyze('pos', 3, { onProgress: (p) => seen.push(p.bestMove) });
+    scheduler.dispose();
+    await expect(request).rejects.toThrow('disposed');
+    reports[0]!({ fen: 'pos', bestMove: 'e2e4', lines: [] });
+    expect(seen).toEqual([]);
+    operations[0].reject(new Error('terminated'));
+    await flush();
+  });
+
+  it('passes no progress callback to the runner when the caller gave none', () => {
+    const { reports, scheduler } = progressHarness();
+    void scheduler.analyze('pos', 3).catch(() => undefined);
+    expect(reports).toEqual([undefined]);
+    scheduler.dispose();
+  });
+});
+
 describe('createAnalysisScheduler with several runners', () => {
   type Call = { slot: number; fen: string; signal: AbortSignal; operation: Deferred<Analysis> };
 

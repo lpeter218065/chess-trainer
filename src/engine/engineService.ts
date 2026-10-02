@@ -49,6 +49,7 @@ export async function createEngineService(workerUrl: string, deps: EngineService
       multiPv,
       limits?.moveTimeMs ?? ANALYSIS_MOVETIME_MS,
       signal,
+      limits?.onProgress,
     );
   };
 

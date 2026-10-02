@@ -7,6 +7,11 @@ export interface AnalysisLimits {
   moveTimeMs?: number;
   /** Aborted by the scheduler when the started request is cancelled or the scheduler is disposed. */
   signal?: AbortSignal;
+  /**
+   * Receives partial results while the search deepens. The scheduler forwards it to
+   * the runner only until the request settles (resolved, rejected, aborted or disposed).
+   */
+  onProgress?: (partial: Analysis) => void;
 }
 
 export interface AnalysisOptions extends AnalysisLimits {
@@ -29,6 +34,7 @@ type PendingRequest = {
   depth?: number;
   moveTimeMs?: number;
   signal?: AbortSignal;
+  onProgress?: (partial: Analysis) => void;
   resolve: (analysis: Analysis) => void;
   reject: (reason: unknown) => void;
   settled: boolean;
@@ -121,6 +127,7 @@ export function createAnalysisScheduler(runners: AnalysisRunner | AnalysisRunner
     request.started = true;
     request.controller = new AbortController();
     slot.active = request;
+    const { onProgress } = request;
     let operation: Promise<Analysis>;
     try {
       // `run` is one complete operation: its internal option update and search
@@ -129,6 +136,10 @@ export function createAnalysisScheduler(runners: AnalysisRunner | AnalysisRunner
         depth: request.depth,
         moveTimeMs: request.moveTimeMs,
         signal: request.controller.signal,
+        // A settled caller no longer wants updates, even if the runner keeps reporting.
+        onProgress: onProgress && ((partial: Analysis) => {
+          if (!request.settled) onProgress(partial);
+        }),
       }));
     } catch (error) {
       operation = Promise.reject(error);
@@ -174,6 +185,7 @@ export function createAnalysisScheduler(runners: AnalysisRunner | AnalysisRunner
         depth: options?.depth,
         moveTimeMs: options?.moveTimeMs,
         signal,
+        onProgress: options?.onProgress,
         resolve,
         reject,
         settled: false,

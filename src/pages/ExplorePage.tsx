@@ -354,6 +354,7 @@ export function ExploreView({ store }: { store: StoreApi<ExploreState> }) {
           </BoardToolbar>
           <BoardStatus error={error}>
               {analyzing && t('explore.analyzingPlay')}
+              {analyzing && analysis?.fen === viewed.fen && analysis.lines[0] && t('explore.analyzingDepth', { n: analysis.lines[0].depth })}
               {!analyzing && isLive && t('explore.liveHint')}
               {!analyzing && !isLive && t('explore.reviewHint')}
           </BoardStatus>

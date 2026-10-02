@@ -226,7 +226,13 @@ export function createSessionStore(deps: SessionDeps): StoreApi<SessionState> {
         hintText: '',
       });
       try {
-        const analysis = await deps.engine.analyze(fen, 3);
+        const analysis = await deps.engine.analyze(fen, 3, {
+          // 搜索加深时先刷新评估与候选；phase 不动，最终结果到达时照常收尾
+          onProgress: (partial) => {
+            if (get().fen !== fen) return;
+            set({ analysisBefore: partial, evalCp: playerCp(partial, lesson) });
+          },
+        });
         if (get().fen !== fen) return; // 已重开
         set({ analysisBefore: analysis, evalCp: playerCp(analysis, lesson), engineError: null, phase: playerToMove ? 'userTurn' : get().phase });
       } catch (e) {

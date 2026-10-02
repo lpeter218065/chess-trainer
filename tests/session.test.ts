@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Chess } from 'chess.js';
 import { createSessionStore, type LlmPort } from '../src/store/session';
-import type { EnginePort } from '../src/engine/engineService';
+import type { Analysis, EnginePort } from '../src/engine/engineService';
 import { lessonById } from '../src/lessons';
 import { difficultyById, GRADE_DEPTH, GRADE_MOVETIME_MS } from '../src/engine/difficulty';
 import { openingDrillById, OPENING_DRILLS } from '../src/lessons/openingDrills';
@@ -321,6 +321,47 @@ describe('session store', () => {
     await store.getState().whenIdle();
     expect(store.getState().phase).toBe('userTurn');
     expect(store.getState().analysisBefore?.fen).toBe(lesson.startFen);
+  });
+
+  it('prepareTurn 搜索加深时先刷新 analysisBefore 与评估；局面变了之后旧进度被忽略', async () => {
+    const base = fakeEngine();
+    let startProgress: ((partial: Analysis) => void) | undefined;
+    let releaseStart: (() => void) | null = null;
+    const engine: EnginePort = {
+      ...base,
+      analyze(fen, multiPv, options) {
+        if (fen !== lesson.startFen) return base.analyze(fen, multiPv, options);
+        startProgress = options?.onProgress;
+        return new Promise((res) => {
+          releaseStart = () => res({ fen, bestMove: 'e2e4', lines: [{ depth: 16, multipv: 1, score: { cp: 30 }, pv: ['e2e4'] }] });
+        });
+      },
+    };
+    const store = createSessionStore({ llmDebounceMs: 0, engine, llm: fakeLlm() });
+    const started = store.getState().start(lesson, diff);
+    expect(store.getState().analysisBefore).toBeNull();
+    expect(startProgress).toBeTypeOf('function');
+
+    const partial: Analysis = { fen: lesson.startFen, bestMove: 'd2d4', lines: [{ depth: 6, multipv: 1, score: { cp: 12 }, pv: ['d2d4'] }] };
+    const phase = store.getState().phase;
+    startProgress!(partial);
+    expect(store.getState().analysisBefore).toEqual(partial);
+    expect(store.getState().evalCp).toBe(12); // 玩家执白、白方行棋：视角不变
+    expect(store.getState().phase).toBe(phase);
+
+    // 用部分结果也能走子；走完局面已变，迟到的进度不能覆盖新局面的分析
+    // start() 的 prepareTurn 仍挂着，whenIdle 会一直等它，这里只等走子与应手完成
+    expect(await store.getState().playUserMove('d2', 'd3')).toBe(true);
+    const after = store.getState();
+    expect(after.fen).not.toBe(lesson.startFen);
+    startProgress!({ ...partial, lines: [{ depth: 9, multipv: 1, score: { cp: 77 }, pv: ['d2d4'] }] });
+    expect(store.getState().analysisBefore).toBe(after.analysisBefore);
+    expect(store.getState().evalCp).toBe(after.evalCp);
+
+    releaseStart!();
+    await started;
+    await store.getState().whenIdle();
+    expect(store.getState().analysisBefore?.fen).toBe(store.getState().fen);
   });
 
   it('只为评分的分析（走子后局面、终局局面）用浅层限制，prepareTurn 仍用满额限制', async () => {

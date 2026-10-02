@@ -109,6 +109,60 @@ describe('explore analysis scheduling', () => {
     scheduler.dispose();
   });
 
+  it('shows partial analysis while the displayed search deepens and keeps analyzing until the final result', async () => {
+    const { calls, requests, scheduler, store } = harness();
+    store.getState().loadStart();
+    expect(calls.map((call) => call.fen)).toEqual([START_FEN]);
+    expect(store.getState().analyzing).toBe(true);
+
+    const partial: Analysis = {
+      fen: START_FEN,
+      bestMove: 'd2d4',
+      lines: [{ depth: 6, multipv: 1, score: { cp: 15 }, pv: ['d2d4'] }],
+    };
+    requests[0].options!.onProgress!(partial);
+    expect(store.getState().analysis).toEqual(partial);
+    expect(store.getState().evalCp).toBe(15);
+    expect(store.getState().analyzing).toBe(true);
+
+    calls[0].resolve();
+    await flush();
+    expect(store.getState().analysis?.lines[0].depth).toBe(12);
+    expect(store.getState().evalCp).toBe(42);
+    expect(store.getState().analyzing).toBe(false);
+    scheduler.dispose();
+  });
+
+  it('ignores progress from a superseded displayed analysis', async () => {
+    const { requests, scheduler, store } = harness();
+    store.getState().loadStart();
+    const staleProgress = requests[0].options!.onProgress!;
+    await store.getState().makeMove('e2', 'e4');
+    expect(store.getState().analysis).toBeNull();
+
+    // 直接调用 store 交给引擎的回调（绕过调度器的 settled 过滤），验证 store 自己的 token 守卫
+    staleProgress({ fen: START_FEN, bestMove: 'd2d4', lines: [{ depth: 8, multipv: 1, score: { cp: 99 }, pv: ['d2d4'] }] });
+    expect(store.getState().analysis).toBeNull();
+    expect(store.getState().evalCp).not.toBe(99);
+    expect(store.getState().analyzing).toBe(true);
+    scheduler.dispose();
+  });
+
+  it('does not grade a move against a partial analysis of the position it was played from', async () => {
+    const { requests, scheduler, store } = harness();
+    store.getState().loadStart();
+    requests[0].options!.onProgress!({
+      fen: START_FEN,
+      bestMove: 'e2e4',
+      lines: [{ depth: 6, multipv: 1, score: { cp: 15 }, pv: ['e2e4'] }],
+    });
+    await store.getState().makeMove('e2', 'e4');
+    // 部分结果不作数：不立刻标「最佳」，走子前局面另行后台评估
+    expect(store.getState().qualities()).toEqual([null]);
+    expect(requests.some((r) => r.fen === START_FEN && r.options?.priority === 'background')).toBe(true);
+    scheduler.dispose();
+  });
+
   it('falls back to a shallow background grade when the displayed analysis of the resulting position fails', async () => {
     const { calls, requests, scheduler, store } = harness();
     store.getState().loadStart();

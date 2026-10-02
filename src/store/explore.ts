@@ -151,7 +151,14 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
       displayedAnalysisAbort?.abort();
       const controller = new AbortController();
       displayedAnalysisAbort = controller;
-      const pending = engine.analyze(fen, 3, { signal: controller.signal });
+      const pending = engine.analyze(fen, 3, {
+        signal: controller.signal,
+        // 搜索加深时先展示部分结果；analyzing 保持为 true，直到最终结果到达
+        onProgress: (partial) => {
+          if (token !== analyzeToken || controller.signal.aborted) return;
+          set({ analysis: partial, evalCp: whiteEval(partial) });
+        },
+      });
       void pending.then((analysis) => {
         if (token !== analyzeToken || controller.signal.aborted) return;
         set({ analysis, evalCp: whiteEval(analysis), analyzing: false });
@@ -542,8 +549,8 @@ export function createExploreStore(engine: EnginePort, llm: LlmPort, opts?: { ll
         const userUci = move.from + move.to + (move.promotion ?? '');
         const movingSide = sideToMove(fen);
         const fenAfter = chess.fen();
-        /** 走子前分析正好是这个局面才能复用，否则后台补算 */
-        const analysisBefore = s0.analysis?.fen === fen ? s0.analysis : null;
+        /** 走子前分析正好是这个局面且已完成才能复用（搜索中的部分结果不用于评分），否则后台补算 */
+        const analysisBefore = s0.analysis?.fen === fen && !s0.analyzing ? s0.analysis : null;
         /** 立刻能断言的只有「最佳」；其余等后台评估，避免瞎标成 good */
         const instantQuality: Quality | null =
           analysisBefore && userUci === analysisBefore.bestMove ? 'best' : null;

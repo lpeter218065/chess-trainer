@@ -12,6 +12,8 @@ class FakeEngine implements StockfishEngineLike {
     this.pending = null;
   });
   analyzeCalls: string[] = [];
+  /** 最近一次 analyze 收到的进度回调 */
+  progress: ((partial: Analysis) => void) | undefined;
   /** setOptions / analyze / bestMove 的调用顺序 */
   events: string[] = [];
   /** 设置后 bestMove 挂起，直到测试调用 releaseBestMove */
@@ -36,8 +38,16 @@ class FakeEngine implements StockfishEngineLike {
   }
 
   /** 与 StockfishEngine 一致：signal 在搜索期间被 abort 时调用 stop()，搜索结束后摘掉监听 */
-  analyze(fen: string, _depth: number, _multiPv: number, _moveTimeMs?: number, signal?: AbortSignal): Promise<Analysis> {
+  analyze(
+    fen: string,
+    _depth: number,
+    _multiPv: number,
+    _moveTimeMs?: number,
+    signal?: AbortSignal,
+    onProgress?: (partial: Analysis) => void,
+  ): Promise<Analysis> {
     this.analyzeCalls.push(fen);
+    this.progress = onProgress;
     this.events.push(`analyze ${fen}`);
     const onAbort = () => this.stop();
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -145,6 +155,24 @@ describe('createEngineService two analysis slots', () => {
     analyst.finish('one');
     await expect(one).resolves.toMatchObject({ fen: 'one' });
     await expect(two).resolves.toMatchObject({ fen: 'two' });
+    port.dispose();
+  });
+
+  it('streams progress from either engine to the caller until the request settles', async () => {
+    const { port, analyst, opponent } = await setup();
+    const seen: string[] = [];
+    const one = port.analyze('one', 3, { onProgress: (p) => seen.push(`one ${p.bestMove}`) });
+    const two = port.analyze('two', 3, { onProgress: (p) => seen.push(`two ${p.bestMove}`) });
+    await flush();
+    analyst.progress!({ fen: 'one', bestMove: 'd2d4', lines: [] });
+    opponent.progress!({ fen: 'two', bestMove: 'c2c4', lines: [] });
+    expect(seen).toEqual(['one d2d4', 'two c2c4']);
+
+    analyst.finish('one');
+    opponent.finish('two');
+    await Promise.all([one, two]);
+    analyst.progress!({ fen: 'one', bestMove: 'g1f3', lines: [] });
+    expect(seen).toEqual(['one d2d4', 'two c2c4']);
     port.dispose();
   });
 

@@ -1,5 +1,6 @@
 import { parseBestMove, parseInfoLine, type InfoLine } from './uciParser';
 import { tl } from '../i18n';
+import { abortError } from './analysisScheduler';
 
 export interface Analysis {
   fen: string;
@@ -103,10 +104,43 @@ export class StockfishEngine {
     await this.run(['ucinewgame', 'isready'], false);
   }
 
-  async analyze(fen: string, depth: number, multiPv: number, moveTimeMs?: number): Promise<Analysis> {
-    await this.setOptions({ MultiPV: multiPv });
-    const go = moveTimeMs ? `go depth ${depth} movetime ${moveTimeMs}` : `go depth ${depth}`;
-    const lines = await this.run([`position fen ${fen}`, go], true);
+  /**
+   * signal 被 abort 时：若本次的 go 正在进行则发送 stop（只停自己的搜索，不影响队列里其他任务）；
+   * 若 go 尚未发出（例如还在等 setoption 的 readyok），则不再发送 position/go，直接以 AbortError 拒绝。
+   */
+  async analyze(
+    fen: string,
+    depth: number,
+    multiPv: number,
+    moveTimeMs?: number,
+    signal?: AbortSignal,
+  ): Promise<Analysis> {
+    let searching = false;
+    const onAbort = () => {
+      if (searching) this.stop();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    let lines: string[];
+    try {
+      await this.setOptions({ MultiPV: multiPv });
+      if (signal?.aborted) throw abortError();
+      const go = moveTimeMs ? `go depth ${depth} movetime ${moveTimeMs}` : `go depth ${depth}`;
+      lines = await this.run(
+        () => {
+          // 轮到该任务时再检查一次：等待队列期间被取消则不发送
+          if (signal?.aborted) throw abortError();
+          searching = true;
+          return [`position fen ${fen}`, go];
+        },
+        true,
+        () => {
+          searching = false;
+        },
+      );
+    } finally {
+      searching = false;
+      signal?.removeEventListener('abort', onAbort);
+    }
     const byPv = new Map<number, InfoLine>();
     for (const l of lines) {
       const info = parseInfoLine(l);

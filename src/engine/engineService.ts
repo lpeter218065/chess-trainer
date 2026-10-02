@@ -32,19 +32,14 @@ export async function createEngineService(workerUrl: string, deps: EngineService
   const scheduler = createAnalysisScheduler(async (fen, multiPv, limits) => {
     const signal = limits?.signal;
     if (signal?.aborted) throw abortError();
-    // 请求被取消时让引擎提前结束当前搜索；搜索结束后摘掉监听，避免误停之后的搜索
-    const onAbort = () => analyst.stop();
-    signal?.addEventListener('abort', onAbort, { once: true });
-    try {
-      return await analyst.analyze(
-        fen,
-        limits?.depth ?? ANALYSIS_DEPTH,
-        multiPv,
-        limits?.moveTimeMs ?? ANALYSIS_MOVETIME_MS,
-      );
-    } finally {
-      signal?.removeEventListener('abort', onAbort);
-    }
+    // 请求被取消时 analyze 自己负责发送 stop（或在 go 发出前放弃）
+    return analyst.analyze(
+      fen,
+      limits?.depth ?? ANALYSIS_DEPTH,
+      multiPv,
+      limits?.moveTimeMs ?? ANALYSIS_MOVETIME_MS,
+      signal,
+    );
   });
   return {
     analyze: scheduler.analyze,

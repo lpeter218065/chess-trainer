@@ -198,3 +198,73 @@ describe('StockfishEngine stop', () => {
     await expect(search).rejects.toThrow();
   });
 });
+
+describe('StockfishEngine analyze abort', () => {
+  beforeEach(() => {
+    (globalThis as { Worker: unknown }).Worker = FakeWorker;
+  });
+
+  afterEach(() => {
+    (globalThis as { Worker: unknown }).Worker = realWorker;
+    FakeWorker.last = null;
+  });
+
+  it('posts no go and rejects with AbortError when aborted during the option round-trip', async () => {
+    const { engine, worker } = await setup();
+    worker.auto = false;
+    const controller = new AbortController();
+    const search = engine.analyze(FEN, 20, 3, 1500, controller.signal);
+    await flush();
+    expect(worker.posted).toEqual(['setoption name MultiPV value 3', 'isready']);
+
+    controller.abort();
+    expect(worker.posted).not.toContain('stop');
+    worker.emit('readyok');
+    await expect(search).rejects.toMatchObject({ name: 'AbortError' });
+    await flush();
+    expect(worker.posted).toEqual(['setoption name MultiPV value 3', 'isready']);
+
+    // 选项仍已记入缓存，引擎可以继续使用
+    worker.auto = true;
+    worker.posted = [];
+    await engine.analyze(FEN, 10, 3);
+    expect(worker.posted).toEqual([`position fen ${FEN}`, 'go depth 10']);
+  });
+
+  it('sends stop through the signal while its own go is in flight', async () => {
+    const { engine, worker } = await setup();
+    await engine.setOptions({ MultiPV: 1 });
+    worker.auto = false;
+    worker.posted = [];
+    const controller = new AbortController();
+    const search = engine.analyze(FEN, 20, 1, 1500, controller.signal);
+    await flush();
+    expect(worker.posted).toEqual([`position fen ${FEN}`, 'go depth 20 movetime 1500']);
+
+    controller.abort();
+    expect(worker.posted.filter((m) => m === 'stop')).toHaveLength(1);
+    worker.emit('info depth 4 multipv 1 score cp 10 pv d2d4');
+    worker.emit('bestmove d2d4');
+    await expect(search).resolves.toMatchObject({ bestMove: 'd2d4' });
+  });
+
+  it('does not stop another queued search when aborted before its own go starts', async () => {
+    const { engine, worker } = await setup();
+    await engine.setOptions({ MultiPV: 1 });
+    worker.auto = false;
+    worker.posted = [];
+    const other = engine.bestMove(FEN, 20, 1500);
+    const controller = new AbortController();
+    const search = engine.analyze(FEN, 20, 1, 1500, controller.signal);
+    await flush();
+    expect(worker.posted).toEqual([`position fen ${FEN}`, 'go depth 20 movetime 1500']);
+
+    controller.abort();
+    expect(worker.posted).not.toContain('stop');
+    worker.emit('bestmove e2e4');
+    await expect(other).resolves.toBe('e2e4');
+    await expect(search).rejects.toMatchObject({ name: 'AbortError' });
+    await flush();
+    expect(worker.posted).toEqual([`position fen ${FEN}`, 'go depth 20 movetime 1500']);
+  });
+});

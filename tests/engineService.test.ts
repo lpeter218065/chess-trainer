@@ -18,11 +18,14 @@ class FakeEngine implements StockfishEngineLike {
   bestMove = vi.fn(async () => 'e2e4');
   terminate = vi.fn();
 
-  analyze(fen: string): Promise<Analysis> {
+  /** 与 StockfishEngine 一致：signal 在搜索期间被 abort 时调用 stop()，搜索结束后摘掉监听 */
+  analyze(fen: string, _depth: number, _multiPv: number, _moveTimeMs?: number, signal?: AbortSignal): Promise<Analysis> {
     this.analyzeCalls.push(fen);
+    const onAbort = () => this.stop();
+    signal?.addEventListener('abort', onAbort, { once: true });
     return new Promise<Analysis>((resolve, reject) => {
       this.pending = { resolve, reject };
-    });
+    }).finally(() => signal?.removeEventListener('abort', onAbort));
   }
 
   finish(fen: string) {

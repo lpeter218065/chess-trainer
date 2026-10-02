@@ -5,10 +5,13 @@ export type AnalysisPriority = 'foreground' | 'background';
 export interface AnalysisLimits {
   depth?: number;
   moveTimeMs?: number;
+  /** Aborted by the scheduler when the started request is cancelled or the scheduler is disposed. */
+  signal?: AbortSignal;
 }
 
 export interface AnalysisOptions extends AnalysisLimits {
   priority?: AnalysisPriority;
+  /** Caller's cancellation signal; the runner receives a separate, scheduler-owned one. */
   signal?: AbortSignal;
 }
 
@@ -31,9 +34,11 @@ type PendingRequest = {
   settled: boolean;
   started: boolean;
   abortListener?: () => void;
+  /** Created when the request starts; its signal is handed to the runner. */
+  controller?: AbortController;
 };
 
-function abortError(): Error {
+export function abortError(): Error {
   if (typeof DOMException !== 'undefined') return new DOMException('The operation was aborted', 'AbortError');
   const error = new Error('The operation was aborted');
   error.name = 'AbortError';
@@ -87,8 +92,11 @@ export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler 
       drain();
       return;
     }
-    // The worker search cannot be interrupted safely; only settle this caller.
+    // Settle this caller now and ask the runner to cut its search short. The worker
+    // slot stays occupied until the runner's promise settles, so the next request
+    // never overlaps the stopped search; that late result or error is ignored.
     rejectRequest(request, abortError());
+    request.controller?.abort();
   };
 
   drain = () => {
@@ -101,6 +109,7 @@ export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler 
     }
 
     request.started = true;
+    request.controller = new AbortController();
     active = request;
     let operation: Promise<Analysis>;
     try {
@@ -109,6 +118,7 @@ export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler 
       operation = Promise.resolve(run(request.fen, request.multiPv, {
         depth: request.depth,
         moveTimeMs: request.moveTimeMs,
+        signal: request.controller.signal,
       }));
     } catch (error) {
       operation = Promise.reject(error);
@@ -170,7 +180,10 @@ export function createAnalysisScheduler(run: AnalysisRunner): AnalysisScheduler 
     foreground.length = 0;
     background.length = 0;
     for (const request of queued) rejectRequest(request, disposedError());
-    if (active) rejectRequest(active, disposedError());
+    if (active) {
+      rejectRequest(active, disposedError());
+      active.controller?.abort();
+    }
   };
 
   return { analyze, dispose };

@@ -136,3 +136,65 @@ describe('StockfishEngine option cache', () => {
     await second;
   });
 });
+
+describe('StockfishEngine stop', () => {
+  beforeEach(() => {
+    (globalThis as { Worker: unknown }).Worker = FakeWorker;
+  });
+
+  afterEach(() => {
+    (globalThis as { Worker: unknown }).Worker = realWorker;
+    FakeWorker.last = null;
+  });
+
+  it('does nothing when no search is in flight', async () => {
+    const { engine, worker } = await setup();
+    engine.stop();
+    expect(worker.posted).toEqual([]);
+
+    // isready 等待中也不是搜索
+    worker.auto = false;
+    const ready = engine.newGame();
+    await flush();
+    engine.stop();
+    expect(worker.posted).toEqual(['ucinewgame', 'isready']);
+    worker.emit('readyok');
+    await ready;
+  });
+
+  it('posts stop once during a go, then the job resolves on bestmove and the queue continues', async () => {
+    const { engine, worker } = await setup();
+    worker.auto = false;
+    const search = engine.bestMove(FEN, 20, 1500);
+    const next = engine.newGame();
+    await flush();
+    expect(worker.posted).toEqual([`position fen ${FEN}`, 'go depth 20 movetime 1500']);
+
+    engine.stop();
+    engine.stop();
+    expect(worker.posted.filter((m) => m === 'stop')).toHaveLength(1);
+
+    worker.emit('info depth 5 multipv 1 score cp 10 pv d2d4');
+    worker.emit('bestmove d2d4');
+    await expect(search).resolves.toBe('d2d4');
+    await flush();
+    expect(worker.posted.slice(-2)).toEqual(['ucinewgame', 'isready']);
+    worker.emit('readyok');
+    await next;
+
+    // 搜索已结束，再次 stop 不发送
+    engine.stop();
+    expect(worker.posted.filter((m) => m === 'stop')).toHaveLength(1);
+  });
+
+  it('rejects analyze when a stopped search reports bestmove (none)', async () => {
+    const { engine, worker } = await setup();
+    await engine.setOptions({ MultiPV: 1 });
+    worker.auto = false;
+    const search = engine.analyze(FEN, 20, 1, 1500);
+    await flush();
+    engine.stop();
+    worker.emit('bestmove (none)');
+    await expect(search).rejects.toThrow();
+  });
+});

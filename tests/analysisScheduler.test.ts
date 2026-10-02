@@ -58,7 +58,10 @@ describe('createAnalysisScheduler', () => {
       return Promise.resolve(analysis(fen));
     });
     await scheduler.analyze('review', 2, { depth: 12, moveTimeMs: 300 });
-    expect(seen[0]).toEqual({ fen: 'review', limits: { depth: 12, moveTimeMs: 300 } });
+    expect(seen[0]).toEqual({
+      fen: 'review',
+      limits: { depth: 12, moveTimeMs: 300, signal: expect.any(AbortSignal) },
+    });
     scheduler.dispose();
   });
 
@@ -151,6 +154,71 @@ describe('createAnalysisScheduler', () => {
     operations[1].resolve(analysis('current'));
     await expect(next).resolves.toMatchObject({ fen: 'current' });
     scheduler.dispose();
+  });
+
+  it('aborts the runner signal when a started request is aborted', async () => {
+    const signals: AbortSignal[] = [];
+    const operations: Deferred<Analysis>[] = [];
+    const scheduler = createAnalysisScheduler((_fen, _multiPv, limits) => {
+      signals.push(limits!.signal!);
+      const operation = deferred<Analysis>();
+      operations.push(operation);
+      return operation.promise;
+    });
+    const controller = new AbortController();
+    const active = scheduler.analyze('stale', 1, { signal: controller.signal });
+    expect(signals[0].aborted).toBe(false);
+    // 调用方的 signal 与交给 runner 的 signal 不是同一个对象
+    expect(signals[0]).not.toBe(controller.signal);
+    controller.abort();
+    expect(signals[0].aborted).toBe(true);
+    await expect(active).rejects.toMatchObject({ name: 'AbortError' });
+    operations[0].resolve(analysis('stale'));
+    scheduler.dispose();
+  });
+
+  it('starts the next request only after a stopped runner settles, ignoring its rejection', async () => {
+    const calls: string[] = [];
+    const signals: AbortSignal[] = [];
+    const operations: Deferred<Analysis>[] = [];
+    const scheduler = createAnalysisScheduler((fen, _multiPv, limits) => {
+      calls.push(fen);
+      signals.push(limits!.signal!);
+      const operation = deferred<Analysis>();
+      operations.push(operation);
+      return operation.promise;
+    });
+    const controller = new AbortController();
+    const stale = scheduler.analyze('stale', 1, { signal: controller.signal });
+    const next = scheduler.analyze('current', 1);
+    controller.abort();
+    await expect(stale).rejects.toMatchObject({ name: 'AbortError' });
+    await flush();
+    expect(calls).toEqual(['stale']);
+    // 被 stop 的搜索可能以 bestmove (none) 之类的错误结束：调用方已结算，错误应被吞掉
+    operations[0].reject(new Error('no bestmove'));
+    await flush();
+    expect(calls).toEqual(['stale', 'current']);
+    expect(signals[1].aborted).toBe(false);
+    operations[1].resolve(analysis('current'));
+    await expect(next).resolves.toMatchObject({ fen: 'current' });
+    scheduler.dispose();
+  });
+
+  it('aborts the active runner signal on dispose', async () => {
+    const signals: AbortSignal[] = [];
+    const operation = deferred<Analysis>();
+    const scheduler = createAnalysisScheduler((_fen, _multiPv, limits) => {
+      signals.push(limits!.signal!);
+      return operation.promise;
+    });
+    const active = scheduler.analyze('active', 1);
+    expect(signals[0].aborted).toBe(false);
+    scheduler.dispose();
+    expect(signals[0].aborted).toBe(true);
+    await expect(active).rejects.toThrow('disposed');
+    operation.reject(new Error('terminated'));
+    await flush();
   });
 
   it('recovers after a failed operation', async () => {

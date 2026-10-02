@@ -1,6 +1,6 @@
 import { StockfishEngine, type Analysis } from './stockfishWorker';
 import { ANALYSIS_DEPTH, ANALYSIS_MOVETIME_MS, type Difficulty } from './difficulty';
-import { createAnalysisScheduler, type AnalysisOptions } from './analysisScheduler';
+import { abortError, createAnalysisScheduler, type AnalysisOptions } from './analysisScheduler';
 
 export type { Analysis };
 export { createAnalysisScheduler } from './analysisScheduler';
@@ -12,20 +12,40 @@ export interface EnginePort {
   dispose(): void;
 }
 
+/** createEngineService 用到的 StockfishEngine 能力，便于测试注入假引擎 */
+export type StockfishEngineLike = Pick<
+  StockfishEngine,
+  'init' | 'setOptions' | 'analyze' | 'bestMove' | 'stop' | 'terminate'
+>;
+
+export interface EngineServiceDeps {
+  createEngine?: (workerUrl: string) => StockfishEngineLike;
+}
+
 /** 两个 worker：analyst 满力 MultiPV，opponent 受 Skill Level 与深度限制 */
-export async function createEngineService(workerUrl: string): Promise<EnginePort> {
-  const analyst = new StockfishEngine(workerUrl);
-  const opponent = new StockfishEngine(workerUrl);
+export async function createEngineService(workerUrl: string, deps: EngineServiceDeps = {}): Promise<EnginePort> {
+  const createEngine = deps.createEngine ?? ((url: string) => new StockfishEngine(url));
+  const analyst = createEngine(workerUrl);
+  const opponent = createEngine(workerUrl);
   await Promise.all([analyst.init(), opponent.init()]);
   await analyst.setOptions({ 'Skill Level': 20, MultiPV: 3 });
-  const scheduler = createAnalysisScheduler((fen, multiPv, limits) =>
-    analyst.analyze(
-      fen,
-      limits?.depth ?? ANALYSIS_DEPTH,
-      multiPv,
-      limits?.moveTimeMs ?? ANALYSIS_MOVETIME_MS,
-    ),
-  );
+  const scheduler = createAnalysisScheduler(async (fen, multiPv, limits) => {
+    const signal = limits?.signal;
+    if (signal?.aborted) throw abortError();
+    // 请求被取消时让引擎提前结束当前搜索；搜索结束后摘掉监听，避免误停之后的搜索
+    const onAbort = () => analyst.stop();
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      return await analyst.analyze(
+        fen,
+        limits?.depth ?? ANALYSIS_DEPTH,
+        multiPv,
+        limits?.moveTimeMs ?? ANALYSIS_MOVETIME_MS,
+      );
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+    }
+  });
   return {
     analyze: scheduler.analyze,
     async opponentMove(fen, difficulty) {

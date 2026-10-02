@@ -7,7 +7,13 @@ export interface Analysis {
   bestMove: string;
 }
 
-type Job = { resolve: (lines: string[]) => void; reject: (e: Error) => void; untilBestMove: boolean; lines: string[] };
+type Job = {
+  resolve: (lines: string[]) => void;
+  reject: (e: Error) => void;
+  untilBestMove: boolean;
+  lines: string[];
+  stopSent?: boolean;
+};
 
 /** 单个 Stockfish Worker 的 Promise 封装。命令串行执行。 */
 export class StockfishEngine {
@@ -117,6 +123,18 @@ export class StockfishEngine {
     const bm = lines.map(parseBestMove).find((m): m is string => m !== null);
     if (!bm) throw new Error(tl('error.engineNoBestmove'));
     return bm;
+  }
+
+  /**
+   * 中断正在进行的搜索：仅当当前任务是 go（等待 bestmove）时发送 stop，否则什么也不做；
+   * 同一次搜索只发送一次，可重复调用。
+   * 引擎收到 stop 后仍会回送 bestmove，正在运行的任务照常完成，队列保持一致。
+   */
+  stop(): void {
+    const job = this.current;
+    if (!job?.untilBestMove || job.stopSent) return;
+    job.stopSent = true;
+    this.worker.postMessage('stop');
   }
 
   terminate() {

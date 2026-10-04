@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useT } from '../i18n';
 
 export function ToolToggle({
@@ -61,33 +62,67 @@ function IconMore() {
   );
 }
 
+/** Gap between the trigger button and the menu, matching the old `mb-1.5`. */
+const MENU_GAP = 6;
+/** Assumed menu height before the first measurement. */
+const MENU_FALLBACK_HEIGHT = 200;
+
 export function BoardMoreMenu({ items }: { items: BoardMoreItem[] }) {
   const visible = items.filter((item) => !item.hidden);
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // The toolbar scrolls horizontally on narrow layouts, which clips anything absolutely
+  // positioned inside it, so the menu lives in a portal and is pinned to the button.
+  const place = useCallback(() => {
+    const button = buttonRef.current;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    const menuHeight = menuRef.current?.offsetHeight || MENU_FALLBACK_HEIGHT;
+    const right = window.innerWidth - rect.right;
+    setMenuStyle(
+      rect.top < menuHeight + MENU_GAP
+        ? { position: 'fixed', right, top: rect.bottom + MENU_GAP }
+        : { position: 'fixed', right, bottom: window.innerHeight - rect.top + MENU_GAP },
+    );
+  }, []);
+
+  // Measure after the menu mounts (hidden) and before paint, so it never flashes in the wrong spot.
+  useLayoutEffect(() => {
+    if (open) place();
+    else setMenuStyle(null);
+  }, [open, place]);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!buttonRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
     return () => {
       document.removeEventListener('mousedown', onDoc);
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
     };
-  }, [open]);
+  }, [open, place]);
 
   const t = useT();
   if (visible.length === 0) return null;
 
   return (
-    <div ref={rootRef} className="relative">
+    <div>
       <button
+        ref={buttonRef}
         type="button"
         className={`btn btn-sm ${open ? 'btn-on' : ''}`}
         aria-label={t('trainer.more')}
@@ -98,33 +133,40 @@ export function BoardMoreMenu({ items }: { items: BoardMoreItem[] }) {
         <IconMore />
         {t('trainer.more')}
       </button>
-      {open && (
-        <div className="menu absolute right-0 bottom-full z-20 mb-1.5 min-w-44 py-1" role="menu">
-          {visible.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="menuitem"
-              className={`flex min-h-11 w-full flex-col items-start justify-center px-3 py-1.5 text-left text-sm ${
-                item.pressed ? 'bg-cream font-medium text-ink' : 'text-ink'
-              } ${item.disabled ? 'opacity-40' : ''}`}
-              disabled={item.disabled}
-              title={item.disabled ? item.reason : undefined}
-              aria-pressed={item.pressed}
-              onClick={() => {
-                if (item.disabled) return;
-                item.onClick();
-                setOpen(false);
-              }}
-            >
-              <span>{item.label}{item.pressed ? t('trainer.on') : ''}</span>
-              {item.disabled && item.reason && (
-                <span className="text-[11px] font-normal text-muted">{item.reason}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="menu z-40 min-w-44 py-1"
+            role="menu"
+            style={menuStyle ?? { position: 'fixed', visibility: 'hidden' }}
+          >
+            {visible.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitem"
+                className={`flex min-h-11 w-full flex-col items-start justify-center px-3 py-1.5 text-left text-sm ${
+                  item.pressed ? 'bg-cream font-medium text-ink' : 'text-ink'
+                } ${item.disabled ? 'opacity-40' : ''}`}
+                disabled={item.disabled}
+                title={item.disabled ? item.reason : undefined}
+                aria-pressed={item.pressed}
+                onClick={() => {
+                  if (item.disabled) return;
+                  item.onClick();
+                  setOpen(false);
+                }}
+              >
+                <span>{item.label}{item.pressed ? t('trainer.on') : ''}</span>
+                {item.disabled && item.reason && (
+                  <span className="text-[11px] font-normal text-muted">{item.reason}</span>
+                )}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
